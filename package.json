@@ -1,5 +1,5 @@
 {
-  "name": "@cloudcli-ai/cloudcli",
+  "name": "@glwhappen/web-code",
   "version": "1.32.0",
   "description": "A web-based UI for Claude Code CLI",
   "type": "module",
@@ -18,7 +18,7 @@
   "homepage": "https://cloudcli.ai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/siteboon/claudecodeui.git"
+    "url": "git+https://github.com/glwhappen/web-code.git"
   },
   "bugs": {
     "url": "https://github.com/siteboon/claudecodeui/issues"
