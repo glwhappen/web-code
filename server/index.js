@@ -60,6 +60,7 @@ import mcpUtilsRoutes from './routes/mcp-utils.js';
 import commandsRoutes from './routes/commands.js';
 import settingsRoutes from './routes/settings.js';
 import agentRoutes from './routes/agent.js';
+import adminRoutes from './routes/admin.js';
 import projectModuleRoutes from './modules/projects/projects.routes.js';
 import userRoutes from './routes/user.js';
 import geminiRoutes from './routes/gemini.js';
@@ -175,6 +176,9 @@ app.use('/api/settings', authenticateToken, settingsRoutes);
 
 // User API Routes (protected)
 app.use('/api/user', authenticateToken, userRoutes);
+
+// Admin API Routes (protected)
+app.use('/api/admin', adminRoutes);
 
 // Gemini API Routes (protected)
 app.use('/api/gemini', authenticateToken, geminiRoutes);
