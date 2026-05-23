@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+
 import { userDb, appConfigDb } from '../modules/database/index.js';
 import { IS_PLATFORM } from '../constants/config.js';
 
@@ -76,6 +77,14 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
+const requireAdmin = (req, res, next) => {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ error: 'Administrator access required' });
+  }
+
+  next();
+};
+
 // Generate JWT token
 const generateToken = (user) => {
   return jwt.sign(
@@ -126,6 +135,7 @@ const authenticateWebSocket = (token) => {
 export {
   validateApiKey,
   authenticateToken,
+  requireAdmin,
   generateToken,
   authenticateWebSocket,
   JWT_SECRET

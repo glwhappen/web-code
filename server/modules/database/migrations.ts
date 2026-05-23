@@ -450,6 +450,9 @@ export const runMigrations = (db: Database) => {
       'has_completed_onboarding',
       'BOOLEAN DEFAULT 0'
     );
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'is_admin', 'BOOLEAN DEFAULT 0');
+
+    db.exec("UPDATE users SET is_admin = 1 WHERE id = 1 AND is_active = 1");
 
     db.exec(APP_CONFIG_TABLE_SCHEMA_SQL);
     db.exec(USER_NOTIFICATION_PREFERENCES_TABLE_SCHEMA_SQL);
