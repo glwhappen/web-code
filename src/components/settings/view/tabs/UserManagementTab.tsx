@@ -1,4 +1,4 @@
-import { Loader2, Shield, Trash2, UserPlus, Users } from 'lucide-react';
+import { Key, Loader2, Shield, Trash2, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
@@ -60,6 +60,8 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<number | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
   const [formState, setFormState] = useState<CreateUserFormState>(initialFormState);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -141,7 +143,7 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
 
   const handleDeleteUser = useCallback(
     async (user: ManagedUser) => {
-      if (!window.confirm(`确认删除用户“${user.username}”吗？此操作不可撤销。`)) {
+      if (!window.confirm(`确认删除用户"${user.username}"吗？此操作不可撤销，该用户的所有项目和会话数据也将被删除。`)) {
         return;
       }
 
@@ -168,6 +170,35 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
     [loadUsers],
   );
 
+  const handleResetPassword = useCallback(
+    async (userId: number) => {
+      setErrorMessage('');
+      setSuccessMessage('');
+
+      if (!resetPasswordValue || resetPasswordValue.length < 8) {
+        setErrorMessage('密码至少需要 8 位');
+        return;
+      }
+
+      try {
+        const response = await api.admin.resetPassword(userId, resetPasswordValue);
+        if (!response.ok) {
+          const message = await extractErrorMessage(response, '重置密码失败');
+          setErrorMessage(message);
+          return;
+        }
+
+        setSuccessMessage('密码已重置');
+        setResetPasswordUserId(null);
+        setResetPasswordValue('');
+      } catch (error) {
+        console.error('Failed to reset password:', error);
+        setErrorMessage('重置密码失败，请稍后重试');
+      }
+    },
+    [resetPasswordValue],
+  );
+
   return (
     <div className="space-y-6 md:space-y-8">
       <div className="space-y-3">
@@ -176,7 +207,7 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
           <h3 className="text-lg font-medium text-foreground">用户管理</h3>
         </div>
         <p className="text-sm text-muted-foreground">
-          仅管理员可见。你可以在这里查看全部用户、创建新用户，以及删除不再使用的账号。
+          仅管理员可见。你可以在这里查看全部用户、创建新用户、重置密码，以及删除不再使用的账号。
         </p>
       </div>
 
@@ -192,7 +223,7 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
             <input
               value={formState.username}
               onChange={(event) => setFormState((prev) => ({ ...prev, username: event.target.value }))}
-              placeholder="请输入用户名"
+              placeholder="请输入用户名（≥3位）"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-blue-500"
               disabled={isCreating}
             />
@@ -204,7 +235,7 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
               type="password"
               value={formState.password}
               onChange={(event) => setFormState((prev) => ({ ...prev, password: event.target.value }))}
-              placeholder="至少 6 位密码"
+              placeholder="≥8位，含大小写和数字"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-blue-500"
               disabled={isCreating}
             />
@@ -292,20 +323,52 @@ export default function UserManagementTab({ currentUserId }: UserManagementTabPr
                       <td className="py-3 pr-4 text-muted-foreground">{formatDateTime(user.created_at)}</td>
                       <td className="py-3 pr-4 text-muted-foreground">{formatDateTime(user.last_login)}</td>
                       <td className="py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteUser(user)}
-                          disabled={deletingUserId === user.id || isCurrentUser}
-                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground dark:border-red-900/40 dark:hover:bg-red-900/20"
-                          title={isCurrentUser ? '当前登录管理员不可删除自己' : '删除用户'}
-                        >
-                          {deletingUserId === user.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                          删除
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetPasswordUserId(resetPasswordUserId === user.id ? null : user.id);
+                              setResetPasswordValue('');
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-accent/50 hover:text-foreground"
+                            title="重置密码"
+                          >
+                            <Key className="h-3.5 w-3.5" />
+                            密码
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteUser(user)}
+                            disabled={deletingUserId === user.id || isCurrentUser}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground dark:border-red-900/40 dark:hover:bg-red-900/20"
+                            title={isCurrentUser ? '当前登录管理员不可删除自己' : '删除用户'}
+                          >
+                            {deletingUserId === user.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            删除
+                          </button>
+                        </div>
+                        {resetPasswordUserId === user.id && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <input
+                              type="password"
+                              value={resetPasswordValue}
+                              onChange={(e) => setResetPasswordValue(e.target.value)}
+                              placeholder="新密码（≥8位）"
+                              className="w-32 rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-blue-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleResetPassword(user.id)}
+                              className="rounded-md bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
+                            >
+                              确认
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

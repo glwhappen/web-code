@@ -193,4 +193,18 @@ export const projectsDb = {
             WHERE user_id = ? AND project_id = ?
         `).run(userId, projectId);
     },
+
+    isProjectPathUsedByOthers(userId: number, projectPath: string): { used: boolean; usernames: string[] } {
+        const db = getConnection();
+        const normalizedProjectPath = normalizeProjectPath(projectPath);
+        const rows = db.prepare(`
+            SELECT u.username FROM projects p
+            JOIN users u ON u.id = p.user_id
+            WHERE p.project_path = ? AND p.user_id != ? AND p.isArchived = 0 AND u.is_active = 1
+        `).all(normalizedProjectPath, userId) as Array<{ username: string }>;
+        return {
+            used: rows.length > 0,
+            usernames: rows.map(r => r.username),
+        };
+    },
 };

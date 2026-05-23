@@ -23,6 +23,9 @@ const persistToken = (token: string) => {
 
 const clearStoredToken = () => {
   localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  // Clear user-specific session state on logout
+  localStorage.removeItem('activeTab');
+  localStorage.removeItem('selected-provider');
 };
 
 export function useAuth(): AuthContextValue {
