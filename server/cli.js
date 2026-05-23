@@ -136,9 +136,9 @@ function showStatus() {
 
     console.log('\n' + c.dim('═'.repeat(60)));
     console.log(`\n${c.tip('[TIP]')} Hints:`);
-    console.log(`      ${c.dim('>')} Use ${c.bright('cloudcli --port 8080')} to run on a custom port`);
-    console.log(`      ${c.dim('>')} Use ${c.bright('cloudcli --database-path /path/to/db')} for custom database`);
-    console.log(`      ${c.dim('>')} Run ${c.bright('cloudcli help')} for all options`);
+    console.log(`      ${c.dim('>')} Use ${c.bright('web-code --port 8080')} to run on a custom port`);
+    console.log(`      ${c.dim('>')} Use ${c.bright('web-code --database-path /path/to/db')} for custom database`);
+    console.log(`      ${c.dim('>')} Run ${c.bright('web-code help')} for all options`);
     console.log(`      ${c.dim('>')} Access the UI at http://localhost:${process.env.SERVER_PORT || process.env.PORT || '3001'}\n`);
 }
 
@@ -150,8 +150,7 @@ function showHelp() {
 ╚═══════════════════════════════════════════════════════════════╝
 
 Usage:
-  claude-code-ui [command] [options]
-  cloudcli [command] [options]
+  web-code [command] [options]
 
 Commands:
   start          Start the CloudCLI server (default)
@@ -168,10 +167,10 @@ Options:
   -v, --version               Show version information
 
 Examples:
-  $ cloudcli                        # Start with defaults
-  $ cloudcli --port 8080            # Start on port 8080
-  $ cloudcli sandbox ~/my-project   # Run in a Docker sandbox
-  $ cloudcli status                 # Show configuration
+  $ web-code                        # Start with defaults
+  $ web-code --port 8080            # Start on port 8080
+  $ web-code sandbox ~/my-project   # Run in a Docker sandbox
+  $ web-code status                 # Show configuration
 
 Environment Variables:
   SERVER_PORT         Set server port (default: 3001)
@@ -208,12 +207,12 @@ function isNewerVersion(v1, v2) {
 async function checkForUpdates(silent = false) {
     try {
         const { execSync } = await import('child_process');
-        const latestVersion = execSync('npm show @cloudcli-ai/cloudcli version', { encoding: 'utf8' }).trim();
+        const latestVersion = execSync('npm show @glwhappen/web-code version', { encoding: 'utf8' }).trim();
         const currentVersion = packageJson.version;
 
         if (isNewerVersion(latestVersion, currentVersion)) {
             console.log(`\n${c.warn('[UPDATE]')} New version available: ${c.bright(latestVersion)} (current: ${currentVersion})`);
-            console.log(`         Run ${c.bright('cloudcli update')} to update\n`);
+            console.log(`         Run ${c.bright('web-code update')} to update\n`);
             return { hasUpdate: true, latestVersion, currentVersion };
         } else if (!silent) {
             console.log(`${c.ok('[OK]')} You are on the latest version (${currentVersion})`);
@@ -241,11 +240,11 @@ async function updatePackage() {
         }
 
         console.log(`${c.info('[INFO]')} Updating from ${currentVersion} to ${latestVersion}...`);
-        execSync('npm update -g @cloudcli-ai/cloudcli', { stdio: 'inherit' });
-        console.log(`${c.ok('[OK]')} Update complete! Restart cloudcli to use the new version.`);
+        execSync('npm update -g @glwhappen/web-code', { stdio: 'inherit' });
+        console.log(`${c.ok('[OK]')} Update complete! Restart web-code to use the new version.`);
     } catch (e) {
         console.error(`${c.error('[ERROR]')} Update failed: ${e.message}`);
-        console.log(`${c.tip('[TIP]')} Try running manually: npm update -g @cloudcli-ai/cloudcli`);
+        console.log(`${c.tip('[TIP]')} Try running manually: npm update -g @glwhappen/web-code`);
     }
 }
 
@@ -323,8 +322,8 @@ function showSandboxHelp() {
 ${c.bright('CloudCLI Sandbox')} — Run CloudCLI inside Docker Sandboxes
 
 Usage:
-  cloudcli sandbox <workspace>            Create and start a sandbox
-  cloudcli sandbox <subcommand> [name]    Manage sandboxes
+  web-code sandbox <workspace>            Create and start a sandbox
+  web-code sandbox <subcommand> [name]    Manage sandboxes
 
 Subcommands:
   ${c.bright('(default)')}    Create a sandbox and start the web UI
@@ -343,13 +342,13 @@ Options:
       --port <port>         Host port for the web UI (default: 3001)
 
 Examples:
-  $ cloudcli sandbox ~/my-project
-  $ cloudcli sandbox ~/my-project --agent codex --port 8080
-  $ cloudcli sandbox ~/my-project --env SERVER_PORT=8080 --env HOST=0.0.0.0
-  $ cloudcli sandbox ls
-  $ cloudcli sandbox stop my-project
-  $ cloudcli sandbox start my-project
-  $ cloudcli sandbox rm my-project
+  $ web-code sandbox ~/my-project
+  $ web-code sandbox ~/my-project --agent codex --port 8080
+  $ web-code sandbox ~/my-project --env SERVER_PORT=8080 --env HOST=0.0.0.0
+  $ web-code sandbox ls
+  $ web-code sandbox stop my-project
+  $ web-code sandbox start my-project
+  $ web-code sandbox rm my-project
 
 Prerequisites:
   1. Install sbx CLI: https://docs.docker.com/ai/sandboxes/get-started/
@@ -415,7 +414,7 @@ async function sandboxCommand(args) {
 
         case 'stop':
             if (!opts.name) {
-                console.error(`\n${c.error('❌')} Sandbox name required: cloudcli sandbox stop <name>\n`);
+                console.error(`\n${c.error('❌')} Sandbox name required: web-code sandbox stop <name>\n`);
                 process.exit(1);
             }
             sbx(['stop', opts.name], { inherit: true });
@@ -423,7 +422,7 @@ async function sandboxCommand(args) {
 
         case 'rm':
             if (!opts.name) {
-                console.error(`\n${c.error('❌')} Sandbox name required: cloudcli sandbox rm <name>\n`);
+                console.error(`\n${c.error('❌')} Sandbox name required: web-code sandbox rm <name>\n`);
                 process.exit(1);
             }
             sbx(['rm', opts.name], { inherit: true });
@@ -431,7 +430,7 @@ async function sandboxCommand(args) {
 
         case 'logs':
             if (!opts.name) {
-                console.error(`\n${c.error('❌')} Sandbox name required: cloudcli sandbox logs <name>\n`);
+                console.error(`\n${c.error('❌')} Sandbox name required: web-code sandbox logs <name>\n`);
                 process.exit(1);
             }
             try {
@@ -443,7 +442,7 @@ async function sandboxCommand(args) {
 
         case 'start': {
             if (!opts.name) {
-                console.error(`\n${c.error('❌')} Sandbox name required: cloudcli sandbox start <name>\n`);
+                console.error(`\n${c.error('❌')} Sandbox name required: web-code sandbox start <name>\n`);
                 process.exit(1);
             }
             console.log(`\n${c.info('▶')} Starting sandbox ${c.bright(opts.name)}...`);
@@ -455,7 +454,7 @@ async function sandboxCommand(args) {
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             console.log(`${c.info('▶')} Launching CloudCLI web server...`);
-            sbx(['exec', opts.name, 'bash', '-c', 'cloudcli start --port 3001 &']);
+            sbx(['exec', opts.name, 'bash', '-c', 'web-code start --port 3001 &']);
 
             console.log(`${c.info('▶')} Forwarding port ${opts.port} → 3001...`);
             try {
@@ -484,8 +483,8 @@ async function sandboxCommand(args) {
 
         case 'create': {
             if (!opts.workspace) {
-                console.error(`\n${c.error('❌')} Workspace path required: cloudcli sandbox <path>\n`);
-                console.log(`   Example: ${c.bright('cloudcli sandbox ~/my-project')}\n`);
+                console.error(`\n${c.error('❌')} Workspace path required: web-code sandbox <path>\n`);
+                console.log(`   Example: ${c.bright('web-code sandbox ~/my-project')}\n`);
                 process.exit(1);
             }
 
@@ -585,7 +584,7 @@ async function sandboxCommand(args) {
             console.log(`  ${c.dim('$')} sbx stop ${opts.name}`);
             console.log(`  ${c.dim('$')} sbx start ${opts.name}`);
             console.log(`  ${c.dim('$')} sbx rm ${opts.name}`);
-            console.log(`\n${c.dim('  Or install globally:')} npm install -g @cloudcli-ai/cloudcli\n`);
+            console.log(`\n${c.dim('  Or install globally:')} npm install -g @glwhappen/web-code\n`);
             break;
         }
 

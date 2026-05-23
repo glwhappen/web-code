@@ -1,17 +1,17 @@
 {
   "name": "@siteboon/claude-code-ui",
   "version": "2.0.0",
-  "description": "This package has moved to @cloudcli-ai/cloudcli",
+  "description": "This package has moved to @glwhappen/web-code",
   "type": "module",
   "main": "index.js",
   "bin": {
     "claude-code-ui": "./bin.js",
-    "cloudcli": "./bin.js"
+    "web-code": "./bin.js"
   },
   "homepage": "https://cloudcli.ai",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/siteboon/claudecodeui.git"
+    "url": "git+https://github.com/glwhappen/web-code.git"
   },
   "bugs": {
     "url": "https://github.com/siteboon/claudecodeui/issues"
@@ -36,8 +36,8 @@
   ],
   "author": "CloudCLI UI Contributors",
   "dependencies": {
-    "@cloudcli-ai/cloudcli": "*"
+    "@glwhappen/web-code": "*"
   },
-  "deprecated": "This package has been renamed to @cloudcli-ai/cloudcli. Please install @cloudcli-ai/cloudcli instead.",
+  "deprecated": "This package has been renamed to @glwhappen/web-code. Please install @glwhappen/web-code instead.",
   "license": "AGPL-3.0-or-later"
 }
