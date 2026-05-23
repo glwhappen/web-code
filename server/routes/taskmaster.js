@@ -25,11 +25,11 @@ import { broadcastTaskMasterProjectUpdate, broadcastTaskMasterTasksUpdate } from
  * only identifier we accept is the primary key of the `projects` table, so
  * every handler calls this helper and 404s when the id is unknown.
  */
-async function resolveProjectPathFromId(projectId) {
+async function resolveProjectPathFromId(userId, projectId) {
   if (!projectId) {
     return null;
   }
-  return projectsDb.getProjectPathById(projectId);
+  return projectsDb.getProjectPathById(userId, projectId);
 }
 
 const router = express.Router();
@@ -158,7 +158,7 @@ router.get('/tasks/:projectId', async (req, res) => {
         const { projectId } = req.params;
 
         // Get project path via the DB; the legacy JSONL-based resolver is gone.
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -271,7 +271,7 @@ router.get('/prd/:projectId', async (req, res) => {
         const { projectId } = req.params;
 
         // projectId → projectPath lookup through the DB (post-migration).
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -361,7 +361,7 @@ router.post('/prd/:projectId', async (req, res) => {
         }
 
         // Resolve the project folder through the DB using the projectId param.
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -427,7 +427,7 @@ router.get('/prd/:projectId/:fileName', async (req, res) => {
     try {
         const { projectId, fileName } = req.params;
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -489,7 +489,7 @@ router.post('/init/:projectId', async (req, res) => {
     try {
         const { projectId } = req.params;
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -585,7 +585,7 @@ router.post('/add-task/:projectId', async (req, res) => {
             });
         }
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -680,7 +680,7 @@ router.put('/update-task/:projectId/:taskId', async (req, res) => {
         const { projectId, taskId } = req.params;
         const { title, description, status, priority, details } = req.body;
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -804,7 +804,7 @@ router.post('/parse-prd/:projectId', async (req, res) => {
         const { projectId } = req.params;
         const { fileName = 'prd.txt', numTasks, append = false } = req.body;
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',
@@ -1355,7 +1355,7 @@ router.post('/apply-template/:projectId', async (req, res) => {
             });
         }
 
-        const projectPath = await resolveProjectPathFromId(projectId);
+        const projectPath = await resolveProjectPathFromId(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({
                 error: 'Project not found',

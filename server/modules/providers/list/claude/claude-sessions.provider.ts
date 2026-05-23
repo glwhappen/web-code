@@ -102,12 +102,13 @@ async function parseAgentTools(filePath: string): Promise<AnyRecord[]> {
 }
 
 async function getSessionMessages(
+  userId: number,
   sessionId: string,
   limit: number | null,
   offset: number,
 ): Promise<ClaudeHistoryMessagesResult> {
   try {
-    const jsonLPath = sessionsDb.getSessionById(sessionId)?.jsonl_path;
+    const jsonLPath = sessionsDb.getSessionById(userId, sessionId)?.jsonl_path;
 
     if (!jsonLPath) {
       return { messages: [], total: 0, hasMore: false };
@@ -552,13 +553,18 @@ export class ClaudeSessionsProvider implements IProviderSessions {
     sessionId: string,
     options: FetchHistoryOptions = {},
   ): Promise<FetchHistoryResult> {
-    const { limit = null, offset = 0 } = options;
+    const { limit = null, offset = 0, userId } = options;
+
+    if (typeof userId !== 'number') {
+      console.warn(`[ClaudeProvider] fetchHistory called without userId for session ${sessionId}`);
+      return { messages: [], total: 0, hasMore: false, offset: 0, limit: null };
+    }
 
     let result: ClaudeHistoryResult;
     try {
       // Load full history first so `total` reflects frontend-normalized messages,
       // not raw JSONL records.
-      result = await getSessionMessages(sessionId, null, 0);
+      result = await getSessionMessages(userId, sessionId, null, 0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[ClaudeProvider] Failed to load session ${sessionId}:`, message);

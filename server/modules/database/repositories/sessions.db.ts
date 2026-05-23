@@ -4,6 +4,7 @@ import { normalizeProjectPath } from '@/shared/utils.js';
 
 type SessionRow = {
   session_id: string;
+  user_id: number;
   provider: string;
   project_path: string | null;
   jsonl_path: string | null;
@@ -15,7 +16,7 @@ type SessionRow = {
 
 type SessionMetadataLookupRow = Pick<
   SessionRow,
-  'session_id' | 'provider' | 'project_path' | 'jsonl_path' | 'custom_name' | 'isArchived' | 'created_at' | 'updated_at'
+  'session_id' | 'user_id' | 'provider' | 'project_path' | 'jsonl_path' | 'custom_name' | 'isArchived' | 'created_at' | 'updated_at'
 >;
 
 function normalizeTimestamp(value?: string): string | null {
@@ -36,6 +37,7 @@ function normalizeProjectPathForProvider(provider: string, projectPath: string):
 
 export const sessionsDb = {
   createSession(
+    userId: number,
     sessionId: string,
     provider: string,
     projectPath: string,
@@ -51,12 +53,12 @@ export const sessionsDb = {
 
     // First, ensure the project path is recorded in the projects table,
     // since it's a foreign key in the sessions table.
-    projectsDb.createProjectPath(normalizedProjectPath);
+    projectsDb.createProjectPath(userId, normalizedProjectPath);
 
     db.prepare(
-      `INSERT INTO sessions (session_id, provider, custom_name, project_path, jsonl_path, isArchived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
-       ON CONFLICT(session_id) DO UPDATE SET
+      `INSERT INTO sessions (session_id, user_id, provider, custom_name, project_path, jsonl_path, isArchived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+       ON CONFLICT(user_id, session_id) DO UPDATE SET
          provider = excluded.provider,
          updated_at = excluded.updated_at,
          project_path = excluded.project_path,
@@ -65,6 +67,7 @@ export const sessionsDb = {
          custom_name = COALESCE(excluded.custom_name, sessions.custom_name)`
     ).run(
       sessionId,
+      userId,
       provider,
       customName ?? null,
       normalizedProjectPath,
@@ -76,131 +79,131 @@ export const sessionsDb = {
     return sessionId;
   },
 
-  updateSessionCustomName(sessionId: string, customName: string): void {
+  updateSessionCustomName(userId: number, sessionId: string, customName: string): void {
     const db = getConnection();
     db.prepare(
       `UPDATE sessions
        SET custom_name = ?
-       WHERE session_id = ?`
-    ).run(customName, sessionId);
+       WHERE user_id = ? AND session_id = ?`
+    ).run(customName, userId, sessionId);
   },
 
-  getSessionById(sessionId: string): SessionMetadataLookupRow | null {
+  getSessionById(userId: number, sessionId: string): SessionMetadataLookupRow | null {
     const db = getConnection();
     const row = db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE session_id = ?
+         WHERE user_id = ? AND session_id = ?
          ORDER BY updated_at DESC
          LIMIT 1`
       )
-      .get(sessionId) as SessionMetadataLookupRow | undefined;
+      .get(userId, sessionId) as SessionMetadataLookupRow | undefined;
 
     return row ?? null;
   },
 
-  getAllSessions(): SessionRow[] {
+  getAllSessions(userId: number): SessionRow[] {
     const db = getConnection();
     return db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE isArchived = 0`
+         WHERE user_id = ? AND isArchived = 0`
       )
-      .all() as SessionRow[];
+      .all(userId) as SessionRow[];
   },
 
   /**
    * Archived rows are intentionally queried separately so the caller can render
    * them in a dedicated view without reintroducing them into active session lists.
    */
-  getArchivedSessions(): SessionRow[] {
+  getArchivedSessions(userId: number): SessionRow[] {
     const db = getConnection();
     return db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE isArchived = 1
+         WHERE user_id = ? AND isArchived = 1
          ORDER BY datetime(COALESCE(updated_at, created_at)) DESC, session_id DESC`
       )
-      .all() as SessionRow[];
+      .all(userId) as SessionRow[];
   },
 
-  getSessionsByProjectPath(projectPath: string): SessionRow[] {
+  getSessionsByProjectPath(userId: number, projectPath: string): SessionRow[] {
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
     return db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE project_path = ?
+         WHERE user_id = ? AND project_path = ?
            AND isArchived = 0`
       )
-      .all(normalizedProjectPath) as SessionRow[];
+      .all(userId, normalizedProjectPath) as SessionRow[];
   },
 
   /**
    * Permanent project deletion must see every session row for the path,
    * including archived ones, so their transcript files can be cleaned up.
    */
-  getSessionsByProjectPathIncludingArchived(projectPath: string): SessionRow[] {
+  getSessionsByProjectPathIncludingArchived(userId: number, projectPath: string): SessionRow[] {
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
     return db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE project_path = ?`
+         WHERE user_id = ? AND project_path = ?`
       )
-      .all(normalizedProjectPath) as SessionRow[];
+      .all(userId, normalizedProjectPath) as SessionRow[];
   },
 
-  getSessionsByProjectPathPage(projectPath: string, limit: number, offset: number): SessionRow[] {
+  getSessionsByProjectPathPage(userId: number, projectPath: string, limit: number, offset: number): SessionRow[] {
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
     return db
       .prepare(
-        `SELECT session_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
+        `SELECT session_id, user_id, provider, project_path, jsonl_path, custom_name, isArchived, created_at, updated_at
          FROM sessions
-         WHERE project_path = ?
+         WHERE user_id = ? AND project_path = ?
            AND isArchived = 0
          ORDER BY datetime(COALESCE(updated_at, created_at)) DESC, session_id DESC
          LIMIT ? OFFSET ?`
       )
-      .all(normalizedProjectPath, limit, offset) as SessionRow[];
+      .all(userId, normalizedProjectPath, limit, offset) as SessionRow[];
   },
 
-  countSessionsByProjectPath(projectPath: string): number {
+  countSessionsByProjectPath(userId: number, projectPath: string): number {
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
     const row = db
       .prepare(
         `SELECT COUNT(*) AS count
          FROM sessions
-         WHERE project_path = ?
+         WHERE user_id = ? AND project_path = ?
            AND isArchived = 0`
       )
-      .get(normalizedProjectPath) as { count: number } | undefined;
+      .get(userId, normalizedProjectPath) as { count: number } | undefined;
 
     return Number(row?.count ?? 0);
   },
 
-  deleteSessionsByProjectPath(projectPath: string): void {
+  deleteSessionsByProjectPath(userId: number, projectPath: string): void {
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
-    db.prepare(`DELETE FROM sessions WHERE project_path = ?`).run(normalizedProjectPath);
+    db.prepare(`DELETE FROM sessions WHERE user_id = ? AND project_path = ?`).run(userId, normalizedProjectPath);
   },
 
-  getSessionName(sessionId: string, provider: string): string | null {
+  getSessionName(userId: number, sessionId: string, provider: string): string | null {
     const db = getConnection();
     const row = db
       .prepare(
         `SELECT custom_name
          FROM sessions
-         WHERE session_id = ? AND provider = ?`
+         WHERE user_id = ? AND session_id = ? AND provider = ?`
       )
-      .get(sessionId, provider) as { custom_name: string | null } | undefined;
+      .get(userId, sessionId, provider) as { custom_name: string | null } | undefined;
 
     return row?.custom_name ?? null;
   },
@@ -209,17 +212,19 @@ export const sessionsDb = {
    * Soft-delete and restore both use the same flag update so callers keep the
    * row, metadata, and file path intact while toggling visibility.
    */
-  updateSessionIsArchived(sessionId: string, isArchived: boolean): void {
+  updateSessionIsArchived(userId: number, sessionId: string, isArchived: boolean): void {
     const db = getConnection();
     db.prepare(
       `UPDATE sessions
        SET isArchived = ?
-       WHERE session_id = ?`
-    ).run(isArchived ? 1 : 0, sessionId);
+       WHERE user_id = ? AND session_id = ?`
+    ).run(isArchived ? 1 : 0, userId, sessionId);
   },
 
-  deleteSessionById(sessionId: string): boolean {
+  deleteSessionById(userId: number, sessionId: string): boolean {
     const db = getConnection();
-    return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;
+    return (
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND session_id = ?').run(userId, sessionId).changes > 0
+    );
   },
 };

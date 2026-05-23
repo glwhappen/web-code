@@ -72,16 +72,20 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 export const PROJECTS_TABLE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS projects (
     project_id TEXT PRIMARY KEY NOT NULL,
-    project_path TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    project_path TEXT NOT NULL,
     custom_project_name TEXT DEFAULT NULL,
     isStarred BOOLEAN DEFAULT 0,
-    isArchived BOOLEAN DEFAULT 0
+    isArchived BOOLEAN DEFAULT 0,
+    UNIQUE(user_id, project_path),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 `;
 
 export const SESSIONS_TABLE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
     provider TEXT NOT NULL DEFAULT 'claude',
     custom_name TEXT,
     project_path TEXT,
@@ -89,9 +93,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     isArchived BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (session_id),
-    FOREIGN KEY (project_path) REFERENCES projects(project_path)
-    ON DELETE SET NULL
+    PRIMARY KEY (user_id, session_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, project_path) REFERENCES projects(user_id, project_path)
+    ON DELETE CASCADE
     ON UPDATE CASCADE
 );
 `;

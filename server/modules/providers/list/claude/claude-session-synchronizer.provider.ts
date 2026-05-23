@@ -28,7 +28,7 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Scans ~/.claude/projects and upserts discovered sessions into DB.
    */
-  async synchronize(since?: Date): Promise<number> {
+  async synchronize(since: Date | undefined, ownerUserId: number): Promise<number> {
     const nameMap = await buildLookupMap(path.join(this.claudeHome, 'history.jsonl'), 'sessionId', 'display');
     const files = await findFilesRecursivelyCreatedAfter(
       path.join(this.claudeHome, 'projects'),
@@ -38,13 +38,14 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
 
     let processed = 0;
     for (const filePath of files) {
-      const parsed = await this.processSessionFile(filePath, nameMap);
+      const parsed = await this.processSessionFile(ownerUserId, filePath, nameMap);
       if (!parsed) {
         continue;
       }
 
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
+        ownerUserId,
         parsed.sessionId,
         this.provider,
         parsed.projectPath,
@@ -62,19 +63,20 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Parses and upserts one Claude session JSONL file.
    */
-  async synchronizeFile(filePath: string): Promise<string | null> {
+  async synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null> {
     if (!filePath.endsWith('.jsonl')) {
       return null;
     }
 
     const nameMap = await buildLookupMap(path.join(this.claudeHome, 'history.jsonl'), 'sessionId', 'display');
-    const parsed = await this.processSessionFile(filePath, nameMap);
+    const parsed = await this.processSessionFile(ownerUserId, filePath, nameMap);
     if (!parsed) {
       return null;
     }
 
     const timestamps = await readFileTimestamps(filePath);
     return sessionsDb.createSession(
+      ownerUserId,
       parsed.sessionId,
       this.provider,
       parsed.projectPath,
@@ -89,6 +91,7 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
    * Extracts session metadata from one Claude JSONL session file.
    */
   private async processSessionFile(
+    ownerUserId: number,
     filePath: string,
     nameMap: Map<string, string>
   ): Promise<ParsedSession | null> {
@@ -111,7 +114,7 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
       return null;
     }
 
-    const existingSession = sessionsDb.getSessionById(parsed.sessionId);
+    const existingSession = sessionsDb.getSessionById(ownerUserId, parsed.sessionId);
     const existingSessionName = existingSession?.custom_name;
     if (existingSessionName && existingSessionName !== 'Untitled Claude Session') {
       return {

@@ -46,6 +46,7 @@ export type SessionConversationSearchProgressUpdate = {
 };
 
 type SearchSessionConversationsInput = {
+  userId: number;
   query: string;
   limit: number;
   signal?: AbortSignal;
@@ -470,7 +471,7 @@ function extractGeminiText(content: unknown): string {
     .join(' ');
 }
 
-function normalizeSearchableSessions(rows: SessionRepositoryRow[]): SearchableSessionRow[] {
+function normalizeSearchableSessions(userId: number, rows: SessionRepositoryRow[]): SearchableSessionRow[] {
   const normalizedRows: SearchableSessionRow[] = [];
   const projectArchiveStateByPath = new Map<string, boolean>();
 
@@ -502,7 +503,7 @@ function normalizeSearchableSessions(rows: SessionRepositoryRow[]): SearchableSe
     const normalizedProjectPath = typeof row.project_path === 'string' ? row.project_path.trim() : '';
     if (normalizedProjectPath) {
       if (!projectArchiveStateByPath.has(normalizedProjectPath)) {
-        const projectRow = projectsDb.getProjectPath(normalizedProjectPath);
+        const projectRow = projectsDb.getProjectPath(userId, normalizedProjectPath);
         projectArchiveStateByPath.set(normalizedProjectPath, Boolean(projectRow?.isArchived));
       }
 
@@ -521,7 +522,7 @@ function normalizeSearchableSessions(rows: SessionRepositoryRow[]): SearchableSe
   return normalizedRows;
 }
 
-function buildProjectBuckets(searchableSessions: SearchableSessionRow[]): ProjectBucket[] {
+function buildProjectBuckets(userId: number, searchableSessions: SearchableSessionRow[]): ProjectBucket[] {
   const projectBuckets = new Map<string, ProjectBucket>();
   const projectMetadataCache = new Map<string, { projectId: string | null; projectDisplayName: string }>();
 
@@ -535,7 +536,7 @@ function buildProjectBuckets(searchableSessions: SearchableSessionRow[]): Projec
             projectDisplayName: 'Unknown Project',
           });
         } else {
-          const projectRow = projectsDb.getProjectPath(key);
+          const projectRow = projectsDb.getProjectPath(userId, key);
           const customProjectName = typeof projectRow?.custom_project_name === 'string'
             ? projectRow.custom_project_name.trim()
             : '';
@@ -1154,6 +1155,7 @@ async function parseSessionMatches(
 }
 
 export async function searchConversations(
+  userId: number,
   query: string,
   limit = 50,
   onProjectResult: ((update: SessionConversationSearchProgressUpdate) => void) | null = null,
@@ -1172,7 +1174,7 @@ export async function searchConversations(
     return { results: [], totalMatches: 0, query: safeQuery };
   }
 
-  const searchableSessions = normalizeSearchableSessions(sessionsDb.getAllSessions());
+  const searchableSessions = normalizeSearchableSessions(userId, sessionsDb.getAllSessions(userId));
   if (searchableSessions.length === 0) {
     return { results: [], totalMatches: 0, query: safeQuery };
   }
@@ -1220,7 +1222,7 @@ export async function searchConversations(
     }
   }
 
-  const projectBuckets = buildProjectBuckets(searchableSessions);
+  const projectBuckets = buildProjectBuckets(userId, searchableSessions);
   const totalProjects = projectBuckets.length;
   const results: ProjectConversationResult[] = [];
   let scannedProjects = 0;
@@ -1307,6 +1309,7 @@ export const sessionConversationsSearchService = {
    */
   async search(input: SearchSessionConversationsInput): Promise<void> {
     await searchConversations(
+      input.userId,
       input.query,
       input.limit,
       input.onProgress ?? null,

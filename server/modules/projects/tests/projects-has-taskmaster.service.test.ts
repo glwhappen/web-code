@@ -7,8 +7,10 @@ import {
 } from '@/modules/projects/services/projects-has-taskmaster.service.js';
 import { AppError } from '@/shared/utils.js';
 
+const TEST_USER_ID = 1;
+
 test('getProjectTaskMasterById returns null when project path is missing', async () => {
-  const result = await getProjectTaskMasterById('project-1', {
+  const result = await getProjectTaskMasterById(TEST_USER_ID, 'project-1', {
     resolveProjectPathById: () => null,
     detectTaskMasterFolder: async () => {
       throw new Error('detectTaskMasterFolder should not be called when path is missing');
@@ -19,7 +21,7 @@ test('getProjectTaskMasterById returns null when project path is missing', async
 });
 
 test('getProjectTaskMasterById returns configured status when taskmaster exists with essential files', async () => {
-  const result = await getProjectTaskMasterById('project-1', {
+  const result = await getProjectTaskMasterById(TEST_USER_ID, 'project-1', {
     resolveProjectPathById: () => '/workspace/project-1',
     detectTaskMasterFolder: async () => ({
       hasTaskmaster: true,
@@ -56,7 +58,7 @@ test('getProjectTaskMasterById returns configured status when taskmaster exists 
 });
 
 test('getProjectTaskMasterById returns not-configured status when taskmaster is missing', async () => {
-  const result = await getProjectTaskMasterById('project-1', {
+  const result = await getProjectTaskMasterById(TEST_USER_ID, 'project-1', {
     resolveProjectPathById: () => '/workspace/project-1',
     detectTaskMasterFolder: async () => ({
       hasTaskmaster: false,
@@ -73,7 +75,7 @@ test('getProjectTaskMasterById returns not-configured status when taskmaster is 
 test('getProjectTaskMaster throws when project id is missing', async () => {
   await assert.rejects(
     async () =>
-      getProjectTaskMaster('', async () => ({
+      getProjectTaskMaster(TEST_USER_ID, '', async () => ({
         projectId: 'project-1',
         projectPath: '/workspace/project-1',
         taskmaster: {
@@ -94,7 +96,7 @@ test('getProjectTaskMaster throws when project id is missing', async () => {
 
 test('getProjectTaskMaster throws when project does not exist', async () => {
   await assert.rejects(
-    async () => getProjectTaskMaster('project-that-does-not-exist', async () => null),
+    async () => getProjectTaskMaster(TEST_USER_ID, 'project-that-does-not-exist', async () => null),
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.code, 'PROJECT_NOT_FOUND');

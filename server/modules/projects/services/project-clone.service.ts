@@ -43,7 +43,11 @@ type CloneProjectDependencies = {
     userId: number,
   ) => Promise<{ github_token: string } | null>;
   spawnGitClone: (cloneUrl: string, clonePath: string) => GitCloneProcess;
-  registerProject: (projectPath: string, customName: string) => Promise<{ project: Record<string, unknown> }>;
+  registerProject: (
+    userId: number,
+    projectPath: string,
+    customName: string,
+  ) => Promise<{ project: Record<string, unknown> }>;
   logError: (message: string, error: unknown) => void;
 };
 
@@ -133,10 +137,12 @@ const defaultDependencies: CloneProjectDependencies = {
       },
     }) as unknown as GitCloneProcess,
   registerProject: async (
+    userId: number,
     projectPath: string,
     customName: string,
   ): Promise<{ project: Record<string, unknown> }> =>
     createProject({
+      userId,
       projectPath,
       customName,
     }) as Promise<{ project: Record<string, unknown> }>,
@@ -185,17 +191,17 @@ export async function startCloneProject(
   const absolutePath = pathValidation.resolvedPath;
   await dependencies.ensureDirectory(absolutePath);
 
+  const numericUserId =
+    typeof input.userId === 'number' ? input.userId : Number.parseInt(String(input.userId), 10);
+  if (Number.isNaN(numericUserId)) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+
   let githubToken: string | null = null;
   if (typeof input.githubTokenId === 'number') {
-    const numericUserId =
-      typeof input.userId === 'number' ? input.userId : Number.parseInt(String(input.userId), 10);
-    if (Number.isNaN(numericUserId)) {
-      throw new AppError('Authenticated user is required', {
-        code: 'AUTHENTICATION_REQUIRED',
-        statusCode: 401,
-      });
-    }
-
     const token = await dependencies.getGithubTokenById(input.githubTokenId, numericUserId);
     if (!token) {
       throw new AppError('GitHub token not found', {
@@ -258,7 +264,7 @@ export async function startCloneProject(
     gitProcess.on('close', async (code) => {
       if (code === 0) {
         try {
-          const createdProject = await dependencies.registerProject(clonePath, repoName);
+          const createdProject = await dependencies.registerProject(numericUserId, clonePath, repoName);
           handlers.onComplete({
             project: createdProject.project,
             message: 'Repository cloned successfully',

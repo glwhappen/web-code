@@ -28,7 +28,7 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Scans ~/.codex/sessions and upserts discovered sessions into DB.
    */
-  async synchronize(since?: Date): Promise<number> {
+  async synchronize(since: Date | undefined, ownerUserId: number): Promise<number> {
     const nameMap = await buildLookupMap(path.join(this.codexHome, 'session_index.jsonl'), 'id', 'thread_name');
     const files = await findFilesRecursivelyCreatedAfter(
       path.join(this.codexHome, 'sessions'),
@@ -38,21 +38,22 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
 
     let processed = 0;
     for (const filePath of files) {
-      const parsed = await this.processSessionFile(filePath, nameMap);
+      const parsed = await this.processSessionFile(ownerUserId, filePath, nameMap);
       if (!parsed) {
         continue;
       }
 
-      const existingSession = sessionsDb.getSessionById(parsed.sessionId);
+      const existingSession = sessionsDb.getSessionById(ownerUserId, parsed.sessionId);
       if (existingSession) {
         // If session name is untitled and we now have a name, update it
         if (existingSession.custom_name === 'Untitled Codex Session' && parsed.sessionName && parsed.sessionName !== 'Untitled Codex Session') {
-          sessionsDb.updateSessionCustomName(parsed.sessionId, parsed.sessionName);
+          sessionsDb.updateSessionCustomName(ownerUserId, parsed.sessionId, parsed.sessionName);
         }
       }
 
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
+        ownerUserId,
         parsed.sessionId,
         this.provider,
         parsed.projectPath,
@@ -70,19 +71,20 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Parses and upserts one Codex session JSONL file.
    */
-  async synchronizeFile(filePath: string): Promise<string | null> {
+  async synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null> {
     if (!filePath.endsWith('.jsonl')) {
       return null;
     }
 
     const nameMap = await buildLookupMap(path.join(this.codexHome, 'session_index.jsonl'), 'id', 'thread_name');
-    const parsed = await this.processSessionFile(filePath, nameMap);
+    const parsed = await this.processSessionFile(ownerUserId, filePath, nameMap);
     if (!parsed) {
       return null;
     }
 
     const timestamps = await readFileTimestamps(filePath);
     return sessionsDb.createSession(
+      ownerUserId,
       parsed.sessionId,
       this.provider,
       parsed.projectPath,
@@ -97,6 +99,7 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
    * Extracts session metadata from one Codex JSONL session file.
    */
   private async processSessionFile(
+    ownerUserId: number,
     filePath: string,
     nameMap: Map<string, string>
   ): Promise<ParsedSession | null> {
@@ -120,7 +123,7 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
       return null;
     }
 
-    const existingSession = sessionsDb.getSessionById(parsed.sessionId);
+    const existingSession = sessionsDb.getSessionById(ownerUserId, parsed.sessionId);
     const existingSessionName = existingSession?.custom_name;
     if (existingSessionName && existingSessionName !== 'Untitled Codex Session') {
       return {

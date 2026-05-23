@@ -4,6 +4,8 @@ import test from 'node:test';
 import { createProject } from '@/modules/projects/services/project-management.service.js';
 import { AppError } from '@/shared/utils.js';
 
+const TEST_USER_ID = 1;
+
 const projectRow = {
   project_id: 'project-1',
   project_path: '/workspace/my-project',
@@ -14,7 +16,7 @@ const projectRow = {
 
 test('createProject throws when project path is missing', async () => {
   await assert.rejects(
-    async () => createProject({ projectPath: '' }),
+    async () => createProject({ userId: TEST_USER_ID, projectPath: '' }),
     (error: unknown) => {
       assert.ok(error instanceof AppError);
       assert.equal(error.code, 'PROJECT_PATH_REQUIRED');
@@ -28,7 +30,7 @@ test('createProject throws when path validation fails', async () => {
   await assert.rejects(
     async () =>
       createProject(
-        { projectPath: '/invalid/path' },
+        { userId: TEST_USER_ID, projectPath: '/invalid/path' },
         {
           validatePath: async () => ({ valid: false, error: 'blocked path' }),
           ensureWorkspaceDirectory: async () => undefined,
@@ -50,7 +52,7 @@ test('createProject throws conflict when active project path already exists', as
   await assert.rejects(
     async () =>
       createProject(
-        { projectPath: '/workspace/my-project' },
+        { userId: TEST_USER_ID, projectPath: '/workspace/my-project' },
         {
           validatePath: async () => ({ valid: true, resolvedPath: '/workspace/my-project' }),
           ensureWorkspaceDirectory: async () => undefined,
@@ -69,14 +71,16 @@ test('createProject throws conflict when active project path already exists', as
 });
 
 test('createProject falls back to directory name when custom name is not provided', async () => {
+  let capturedUserId = 0;
   let capturedCustomName: string | null = null;
 
   const result = await createProject(
-    { projectPath: '/workspace/my-project', customName: '' },
+    { userId: TEST_USER_ID, projectPath: '/workspace/my-project', customName: '' },
     {
       validatePath: async () => ({ valid: true, resolvedPath: '/workspace/my-project' }),
       ensureWorkspaceDirectory: async () => undefined,
-      persistProjectPath: (_projectPath, customName) => {
+      persistProjectPath: (userId, _projectPath, customName) => {
+        capturedUserId = userId;
         capturedCustomName = customName;
         return {
           outcome: 'created',
@@ -90,6 +94,7 @@ test('createProject falls back to directory name when custom name is not provide
     },
   );
 
+  assert.equal(capturedUserId, TEST_USER_ID);
   assert.equal(capturedCustomName, 'my-project');
   assert.equal(result.outcome, 'created');
   assert.equal(result.project.displayName, 'my-project');
@@ -97,7 +102,7 @@ test('createProject falls back to directory name when custom name is not provide
 
 test('createProject returns archived reuse outcome when archived row is reused', async () => {
   const result = await createProject(
-    { projectPath: '/workspace/my-project' },
+    { userId: TEST_USER_ID, projectPath: '/workspace/my-project' },
     {
       validatePath: async () => ({ valid: true, resolvedPath: '/workspace/my-project' }),
       ensureWorkspaceDirectory: async () => undefined,

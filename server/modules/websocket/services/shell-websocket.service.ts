@@ -6,6 +6,7 @@ import pty, { type IPty } from 'node-pty';
 import { WebSocket, type RawData } from 'ws';
 
 import { parseIncomingJsonObject } from '@/shared/utils.js';
+import type { AuthenticatedWebSocketRequest } from '@/shared/types.js';
 
 type ShellIncomingMessage = {
   type?: string;
@@ -34,7 +35,7 @@ const PTY_SESSION_TIMEOUT = 30 * 60 * 1000;
 const SHELL_URL_PARSE_BUFFER_LIMIT = 32768;
 
 type ShellWebSocketDependencies = {
-  getSessionById: (sessionId: string) => { cliSessionId?: string } | null | undefined;
+  getSessionById: (userId: number | undefined, sessionId: string) => { cliSessionId?: string } | null | undefined;
   stripAnsiSequences: (content: string) => string;
   normalizeDetectedUrl: (url: string) => string | null;
   extractUrlsFromText: (content: string) => string[];
@@ -80,7 +81,8 @@ function parseShellMessage(rawMessage: RawData): ShellIncomingMessage | null {
  */
 function buildShellCommand(
   message: ShellIncomingMessage,
-  dependencies: ShellWebSocketDependencies
+  dependencies: ShellWebSocketDependencies,
+  userId: number | undefined
 ): string {
   const hasSession = readBoolean(message.hasSession);
   const sessionId = readString(message.sessionId);
@@ -118,7 +120,7 @@ function buildShellCommand(
     let resumeId = sessionId;
     if (hasSession && sessionId) {
       try {
-        const existingSession = dependencies.getSessionById(sessionId);
+        const existingSession = dependencies.getSessionById(userId, sessionId);
         if (existingSession && existingSession.cliSessionId) {
           resumeId = existingSession.cliSessionId;
           if (!safeSessionIdPattern.test(resumeId)) {
@@ -147,13 +149,47 @@ function buildShellCommand(
 }
 
 /**
+ * Reads the authenticated user's id off the websocket upgrade request, falling
+ * back to undefined when the connection has no authenticated identity.
+ */
+function readRequestUserId(
+  request: AuthenticatedWebSocketRequest | undefined
+): number | undefined {
+  const user = request?.user;
+  if (!user) {
+    return undefined;
+  }
+
+  if (typeof user.id === 'number') {
+    return user.id;
+  }
+  if (typeof user.id === 'string') {
+    const parsed = Number.parseInt(user.id, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  if (typeof user.userId === 'number') {
+    return user.userId;
+  }
+  if (typeof user.userId === 'string') {
+    const parsed = Number.parseInt(user.userId, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+/**
  * Handles websocket connections used by the standalone shell terminal UI.
  */
 export function handleShellConnection(
   ws: WebSocket,
+  request: AuthenticatedWebSocketRequest,
   dependencies: ShellWebSocketDependencies
 ): void {
   console.log('[INFO] Shell websocket connected');
+
+  const userId = readRequestUserId(request);
 
   let shellProcess: IPty | null = null;
   let ptySessionKey: string | null = null;
@@ -250,7 +286,7 @@ export function handleShellConnection(
           return;
         }
 
-        const shellCommand = buildShellCommand(data, dependencies);
+        const shellCommand = buildShellCommand(data, dependencies, userId);
         const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
         const shellArgs =
           os.platform() === 'win32' ? ['-Command', shellCommand] : ['-c', shellCommand];

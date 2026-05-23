@@ -154,8 +154,8 @@ function bucketSessionRowsByProvider(rows: SessionRepositoryRow[]): SessionsByPr
   return byProvider;
 }
 
-function readProjectSessionsIncludingArchived(projectPath: string): ProjectSessionsPageResult {
-  const rows = sessionsDb.getSessionsByProjectPathIncludingArchived(projectPath) as SessionRepositoryRow[];
+function readProjectSessionsIncludingArchived(userId: number, projectPath: string): ProjectSessionsPageResult {
+  const rows = sessionsDb.getSessionsByProjectPathIncludingArchived(userId, projectPath) as SessionRepositoryRow[];
 
   return {
     sessionsByProvider: bucketSessionRowsByProvider(rows),
@@ -168,16 +168,18 @@ function readProjectSessionsIncludingArchived(projectPath: string): ProjectSessi
  * Reads one paginated project session slice from the DB and groups rows by provider.
  */
 function readProjectSessionsPageByPath(
+  userId: number,
   projectPath: string,
   options: SessionPaginationOptions = {},
 ): ProjectSessionsPageResult {
   const pagination = normalizeSessionPagination(options);
   const rows = sessionsDb.getSessionsByProjectPathPage(
+    userId,
     projectPath,
     pagination.limit,
     pagination.offset,
   ) as SessionRepositoryRow[];
-  const total = sessionsDb.countSessionsByProjectPath(projectPath);
+  const total = sessionsDb.countSessionsByProjectPath(userId, projectPath);
 
   return {
     sessionsByProvider: bucketSessionRowsByProvider(rows),
@@ -201,16 +203,18 @@ function broadcastProgress(progress: ProgressUpdate) {
 }
 
 /**
- * Reads all projects from DB and returns provider-bucketed session summaries.
+ * Reads all projects from DB (scoped to a user) and returns provider-bucketed
+ * session summaries.
  */
 export async function getProjectsWithSessions(
+  userId: number,
   options: GetProjectsWithSessionsOptions = {}
 ): Promise<ProjectListItem[]> {
   if (!options.skipSynchronization) {
-    await sessionSynchronizerService.synchronizeSessions();
+    await sessionSynchronizerService.synchronizeSessions(userId);
   }
 
-  const projectRows = projectsDb.getProjectPaths() as Array<{
+  const projectRows = projectsDb.getProjectPaths(userId) as Array<{
     project_id: string;
     project_path: string;
     custom_project_name?: string | null;
@@ -238,7 +242,7 @@ export async function getProjectsWithSessions(
         ? row.custom_project_name
         : await generateDisplayName(path.basename(projectPath) || projectPath, projectPath);
 
-    const sessionsPage = readProjectSessionsPageByPath(projectPath, {
+    const sessionsPage = readProjectSessionsPageByPath(userId, projectPath, {
       limit: options.sessionsLimit,
       offset: options.sessionsOffset,
     });
@@ -275,13 +279,14 @@ export async function getProjectsWithSessions(
  * conversation history in the archive view regardless of each session's flag.
  */
 export async function getArchivedProjectsWithSessions(
+  userId: number,
   options: Pick<GetProjectsWithSessionsOptions, 'skipSynchronization'> = {},
 ): Promise<ArchivedProjectListItem[]> {
   if (!options.skipSynchronization) {
-    await sessionSynchronizerService.synchronizeSessions();
+    await sessionSynchronizerService.synchronizeSessions(userId);
   }
 
-  const projectRows = projectsDb.getArchivedProjectPaths() as Array<{
+  const projectRows = projectsDb.getArchivedProjectPaths(userId) as Array<{
     project_id: string;
     project_path: string;
     custom_project_name?: string | null;
@@ -296,7 +301,7 @@ export async function getArchivedProjectsWithSessions(
         ? row.custom_project_name
         : await generateDisplayName(path.basename(row.project_path) || row.project_path, row.project_path);
 
-    const sessionsPage = readProjectSessionsIncludingArchived(row.project_path);
+    const sessionsPage = readProjectSessionsIncludingArchived(userId, row.project_path);
 
     archivedProjects.push({
       projectId: row.project_id,
@@ -323,10 +328,11 @@ export async function getArchivedProjectsWithSessions(
  * Loads one paginated session slice for a specific project id.
  */
 export async function getProjectSessionsPage(
+  userId: number,
   projectId: string,
   options: SessionPaginationOptions = {},
 ): Promise<ProjectSessionsPageApiView> {
-  const projectRow = projectsDb.getProjectById(projectId);
+  const projectRow = projectsDb.getProjectById(userId, projectId);
   if (!projectRow) {
     throw new AppError(`Project "${projectId}" was not found.`, {
       code: 'PROJECT_NOT_FOUND',
@@ -334,7 +340,7 @@ export async function getProjectSessionsPage(
     });
   }
 
-  const sessionsPage = readProjectSessionsPageByPath(projectRow.project_path, options);
+  const sessionsPage = readProjectSessionsPageByPath(userId, projectRow.project_path, options);
   return {
     projectId: projectRow.project_id,
     sessions: sessionsPage.sessionsByProvider.claude,
