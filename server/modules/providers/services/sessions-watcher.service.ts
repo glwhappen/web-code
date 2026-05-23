@@ -8,6 +8,26 @@ import { sessionSynchronizerService } from '@/modules/providers/services/session
 import { WS_OPEN_STATE, connectedClients } from '@/modules/websocket/index.js';
 import type { LLMProvider } from '@/shared/types.js';
 import { getProjectsWithSessions } from '@/modules/projects/index.js';
+import { getDefaultOwnerUserId } from '@/shared/default-user.js';
+import { AppError } from '@/shared/utils.js';
+
+/**
+ * Resolves the user id used to attribute background-watcher synchronizations.
+ *
+ * Returns `null` (with a console warning) when no user has registered yet so
+ * that the watcher can keep running silently until the first account exists.
+ */
+function resolveWatcherOwnerUserId(): number | null {
+  try {
+    return getDefaultOwnerUserId();
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'DEFAULT_USER_NOT_AVAILABLE') {
+      console.warn('Session watcher skipping synchronization: no registered user yet');
+      return null;
+    }
+    throw error;
+  }
+}
 
 type WatcherEventType = 'add' | 'change';
 
@@ -141,7 +161,10 @@ async function flushPendingWatcherUpdate(): Promise<void> {
   watcherRefreshInFlight = true;
 
   try {
-    const updatedProjects = await getProjectsWithSessions({ skipSynchronization: true });
+    const ownerUserId = resolveWatcherOwnerUserId();
+    const updatedProjects = ownerUserId !== null
+      ? await getProjectsWithSessions(ownerUserId, { skipSynchronization: true })
+      : [];
     const changeTypes = Array.from(queuedUpdate.changeTypes);
     const watchProviders = Array.from(queuedUpdate.providers);
     const updatedSessionIds = Array.from(queuedUpdate.updatedSessionIds);
@@ -191,7 +214,12 @@ async function onUpdate(
   }
 
   try {
-    const result = await sessionSynchronizerService.synchronizeProviderFile(provider, filePath);
+    const ownerUserId = resolveWatcherOwnerUserId();
+    if (ownerUserId === null) {
+      return;
+    }
+
+    const result = await sessionSynchronizerService.synchronizeProviderFile(ownerUserId, provider, filePath);
     if (!result.indexed) {
       return;
     }
@@ -217,11 +245,16 @@ async function onUpdate(
 export async function initializeSessionsWatcher(): Promise<void> {
   console.log('Setting up session watchers');
 
-  const initialSync = await sessionSynchronizerService.synchronizeSessions();
-  console.log('Initial session synchronization complete', {
-    processedByProvider: initialSync.processedByProvider,
-    failures: initialSync.failures,
-  });
+  const initialOwnerUserId = resolveWatcherOwnerUserId();
+  if (initialOwnerUserId !== null) {
+    const initialSync = await sessionSynchronizerService.synchronizeSessions(initialOwnerUserId);
+    console.log('Initial session synchronization complete', {
+      processedByProvider: initialSync.processedByProvider,
+      failures: initialSync.failures,
+    });
+  } else {
+    console.log('Initial session synchronization skipped: no registered user yet');
+  }
 
   for (const { provider, rootPath } of PROVIDER_WATCH_PATHS) {
     try {

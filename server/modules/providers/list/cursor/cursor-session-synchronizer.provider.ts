@@ -43,7 +43,7 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Scans Cursor chats and upserts discovered sessions into DB.
    */
-  async synchronize(since?: Date): Promise<number> {
+  async synchronize(since: Date | undefined, ownerUserId: number): Promise<number> {
     const projectsDir = path.join(this.cursorHome, 'projects');
 
     let processed = 0;
@@ -58,6 +58,7 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
 
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
+        ownerUserId,
         parsed.sessionId,
         this.provider,
         parsed.projectPath,
@@ -75,7 +76,7 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Parses and upserts one Cursor session JSONL file.
    */
-  async synchronizeFile(filePath: string): Promise<string | null> {
+  async synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null> {
     if (!filePath.endsWith('.jsonl')) {
       return null;
     }
@@ -87,6 +88,7 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
 
     const timestamps = await readFileTimestamps(filePath);
     return sessionsDb.createSession(
+      ownerUserId,
       parsed.sessionId,
       this.provider,
       parsed.projectPath,

@@ -14,6 +14,25 @@ type AuthenticatedUser = {
   id?: number | string;
 };
 
+function getAuthenticatedUserId(req: express.Request): number {
+  const authenticatedUser = (req as typeof req & { user?: AuthenticatedUser }).user;
+  const rawId = authenticatedUser?.id;
+  if (rawId === undefined || rawId === null) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  const numericId = typeof rawId === 'number' ? rawId : Number.parseInt(String(rawId), 10);
+  if (Number.isNaN(numericId)) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  return numericId;
+}
+
 function readQueryStringValue(value: unknown): string {
   if (typeof value === 'string') {
     return value;
@@ -67,16 +86,18 @@ function resolveRouteErrorMessage(error: unknown): string {
 
 router.get(
   '/',
-  asyncHandler(async (_req, res) => {
-    const projects = await getProjectsWithSessions();
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projects = await getProjectsWithSessions(userId);
     res.json(projects);
   }),
 );
 
 router.get(
   '/archived',
-  asyncHandler(async (_req, res) => {
-    const projects = await getArchivedProjectsWithSessions();
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projects = await getArchivedProjectsWithSessions(userId);
     res.json(createApiSuccessResponse({ projects }));
   }),
 );
@@ -84,10 +105,11 @@ router.get(
 router.get(
   '/:projectId/sessions',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const limit = parseNonNegativeIntQuery(req.query.limit, 'limit', 20);
     const offset = parseNonNegativeIntQuery(req.query.offset, 'offset', 0);
-    const sessionsPage = await getProjectSessionsPage(projectId, { limit, offset });
+    const sessionsPage = await getProjectSessionsPage(userId, projectId, { limit, offset });
     res.json(sessionsPage);
   }),
 );
@@ -115,6 +137,7 @@ router.post(
     }
 
     const projectCreationResult = await createProject({
+      userId: getAuthenticatedUserId(req),
       projectPath,
       customName,
     });
@@ -136,10 +159,11 @@ router.post(
 router.post(
   '/migrate-legacy-stars',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectIds = Array.isArray((req.body as { projectIds?: unknown })?.projectIds)
       ? ((req.body as { projectIds: unknown[] }).projectIds as unknown[]).map((x) => String(x))
       : [];
-    const { updated } = applyLegacyStarredProjectIds(projectIds);
+    const { updated } = applyLegacyStarredProjectIds(userId, projectIds);
     res.json({ success: true, updated });
   }),
 );
@@ -179,7 +203,6 @@ router.get('/clone-progress', async (req, res) => {
         statusCode: 401,
       });
     }
-
     cloneOperation = await startCloneProject(
       {
         workspacePath,
@@ -212,17 +235,19 @@ router.get('/clone-progress', async (req, res) => {
 router.get(
   '/:projectId/taskmaster',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
-    const taskMasterDetails = await getProjectTaskMaster(projectId);
+    const taskMasterDetails = await getProjectTaskMaster(userId, projectId);
     res.json(taskMasterDetails);
   }),
 );
 
 router.put('/:projectId/rename', (req, res) => {
   try {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const { displayName } = req.body as { displayName?: unknown };
-    updateProjectDisplayName(projectId, displayName);
+    updateProjectDisplayName(userId, projectId, displayName);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to rename project' });
@@ -232,8 +257,9 @@ router.put('/:projectId/rename', (req, res) => {
 router.post(
   '/:projectId/toggle-star',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
-    const { isStarred } = toggleProjectStar(projectId);
+    const { isStarred } = toggleProjectStar(userId, projectId);
     res.json({ success: true, isStarred });
   }),
 );
@@ -241,8 +267,9 @@ router.post(
 router.post(
   '/:projectId/restore',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
-    restoreArchivedProject(projectId);
+    restoreArchivedProject(userId, projectId);
     res.json(createApiSuccessResponse({ projectId, isArchived: false }));
   }),
 );
@@ -254,9 +281,10 @@ router.post(
 router.delete(
   '/:projectId',
   asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const force = req.query.force === 'true';
-    await deleteOrArchiveProject(projectId, force);
+    await deleteOrArchiveProject(userId, projectId, force);
     res.json({ success: true });
   }),
 );

@@ -231,8 +231,8 @@ async function getGeminiJsonlSessionMessages(sessionFilePath: string): Promise<G
   return { messages, tokenUsage };
 }
 
-async function getGeminiCliSessionMessages(sessionId: string): Promise<GeminiHistoryResult> {
-  const sessionFilePath = sessionsDb.getSessionById(sessionId)?.jsonl_path;
+async function getGeminiCliSessionMessages(userId: number, sessionId: string): Promise<GeminiHistoryResult> {
+  const sessionFilePath = sessionsDb.getSessionById(userId, sessionId)?.jsonl_path;
   if (!sessionFilePath) {
     return { messages: [] };
   }
@@ -352,11 +352,16 @@ export class GeminiSessionsProvider implements IProviderSessions {
     sessionId: string,
     options: FetchHistoryOptions = {},
   ): Promise<FetchHistoryResult> {
-    const { limit = null, offset = 0 } = options;
+    const { limit = null, offset = 0, userId } = options;
+
+    if (typeof userId !== 'number') {
+      console.warn(`[GeminiProvider] fetchHistory called without userId for session ${sessionId}`);
+      return { messages: [], total: 0, hasMore: false, offset: 0, limit: null };
+    }
 
     let result: GeminiHistoryResult;
     try {
-      result = await getGeminiCliSessionMessages(sessionId);
+      result = await getGeminiCliSessionMessages(userId, sessionId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[GeminiProvider] Failed to load session ${sessionId}:`, message);

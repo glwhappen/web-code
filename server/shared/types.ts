@@ -155,6 +155,7 @@ export type FetchHistoryOptions = {
   projectPath?: string;
   limit?: number | null;
   offset?: number;
+  userId?: number;
 };
 
 /**

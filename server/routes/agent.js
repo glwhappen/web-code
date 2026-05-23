@@ -903,7 +903,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
     finalProjectPath = normalizeProjectPath(finalProjectPath);
 
     // Register project path in DB (or reuse existing active registration)
-    const registrationResult = projectsDb.createProjectPath(finalProjectPath, null);
+    const registrationResult = projectsDb.createProjectPath(req.user.id, finalProjectPath, null);
     if (registrationResult.outcome === 'active_conflict') {
       console.log('Project registration already exists for:', finalProjectPath);
     } else {

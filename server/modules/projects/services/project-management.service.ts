@@ -10,6 +10,7 @@ import type {
 import { AppError, normalizeProjectPath, validateWorkspacePath } from '@/shared/utils.js';
 
 type CreateProjectInput = {
+  userId: number;
   projectPath: string;
   customName?: string | null;
 };
@@ -17,8 +18,8 @@ type CreateProjectInput = {
 type CreateProjectDependencies = {
   validatePath: (projectPath: string) => Promise<WorkspacePathValidationResult>;
   ensureWorkspaceDirectory: (projectPath: string) => Promise<void>;
-  persistProjectPath: (projectPath: string, customName: string | null) => CreateProjectPathResult;
-  getProjectByPath: (projectPath: string) => ProjectRepositoryRow | null;
+  persistProjectPath: (userId: number, projectPath: string, customName: string | null) => CreateProjectPathResult;
+  getProjectByPath: (userId: number, projectPath: string) => ProjectRepositoryRow | null;
 };
 
 type ProjectApiView = {
@@ -56,10 +57,10 @@ const defaultDependencies: CreateProjectDependencies = {
       });
     }
   },
-  persistProjectPath: (projectPath: string, customName: string | null): CreateProjectPathResult =>
-    projectsDb.createProjectPath(projectPath, customName),
-  getProjectByPath: (projectPath: string): ProjectRepositoryRow | null =>
-    projectsDb.getProjectPath(projectPath),
+  persistProjectPath: (userId: number, projectPath: string, customName: string | null): CreateProjectPathResult =>
+    projectsDb.createProjectPath(userId, projectPath, customName),
+  getProjectByPath: (userId: number, projectPath: string): ProjectRepositoryRow | null =>
+    projectsDb.getProjectPath(userId, projectPath),
 };
 
 function resolveDisplayName(customName: string | null | undefined, projectPath: string): string {
@@ -95,6 +96,13 @@ export async function createProject(
   input: CreateProjectInput,
   dependencies: CreateProjectDependencies = defaultDependencies,
 ): Promise<CreateProjectServiceResult> {
+  if (!Number.isFinite(input.userId)) {
+    throw new AppError('userId is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+
   const normalizedPath = normalizeProjectPath(input.projectPath || '');
   if (!normalizedPath) {
     throw new AppError('path is required', {
@@ -116,7 +124,7 @@ export async function createProject(
   await dependencies.ensureWorkspaceDirectory(resolvedProjectPath);
 
   const normalizedCustomName = resolveDisplayName(input.customName ?? null, resolvedProjectPath);
-  const persistedProject = dependencies.persistProjectPath(resolvedProjectPath, normalizedCustomName);
+  const persistedProject = dependencies.persistProjectPath(input.userId, resolvedProjectPath, normalizedCustomName);
 
   if (persistedProject.outcome === 'active_conflict') {
     throw new AppError('Project path already exists and is active', {
@@ -126,7 +134,7 @@ export async function createProject(
     });
   }
 
-  const projectRow = persistedProject.project ?? dependencies.getProjectByPath(resolvedProjectPath);
+  const projectRow = persistedProject.project ?? dependencies.getProjectByPath(input.userId, resolvedProjectPath);
   if (!projectRow) {
     throw new AppError('Failed to resolve project after creation', {
       code: 'PROJECT_CREATE_FAILED',
@@ -142,9 +150,9 @@ export async function createProject(
 }
 
 /**
- * Sets `projects.custom_project_name` for the given `projectId` (or clears it when empty).
+ * Sets `projects.custom_project_name` for the given user + `projectId` (or clears it when empty).
  */
-export function updateProjectDisplayName(projectId: string, newDisplayName: unknown): void {
+export function updateProjectDisplayName(userId: number, projectId: string, newDisplayName: unknown): void {
   const trimmed = typeof newDisplayName === 'string' ? newDisplayName.trim() : '';
-  projectsDb.updateCustomProjectNameById(projectId, trimmed.length > 0 ? trimmed : null);
+  projectsDb.updateCustomProjectNameById(userId, projectId, trimmed.length > 0 ? trimmed : null);
 }

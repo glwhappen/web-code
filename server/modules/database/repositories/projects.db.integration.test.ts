@@ -7,8 +7,11 @@ import test from 'node:test';
 import { closeConnection } from '@/modules/database/connection.js';
 import { initializeDatabase } from '@/modules/database/init-db.js';
 import { projectsDb } from '@/modules/database/repositories/projects.db.js';
+import { userDb } from '@/modules/database/repositories/users.js';
 
-async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promise<void> {
+async function withIsolatedDatabase(
+  runTest: (userId: number) => void | Promise<void>,
+): Promise<void> {
   const previousDatabasePath = process.env.DATABASE_PATH;
   const tempDirectory = await mkdtemp(path.join(tmpdir(), 'projects-db-'));
   const databasePath = path.join(tempDirectory, 'auth.db');
@@ -17,8 +20,11 @@ async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promis
   process.env.DATABASE_PATH = databasePath;
   await initializeDatabase();
 
+  const created = userDb.createUser('test-user', 'hash');
+  const userId = Number(created.id);
+
   try {
-    await runTest();
+    await runTest(userId);
   } finally {
     closeConnection();
     if (previousDatabasePath === undefined) {
@@ -31,8 +37,8 @@ async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promis
 }
 
 test('projectsDb.createProjectPath returns created for fresh paths', async () => {
-  await withIsolatedDatabase(() => {
-    const created = projectsDb.createProjectPath('/workspace/new-project');
+  await withIsolatedDatabase((userId) => {
+    const created = projectsDb.createProjectPath(userId, '/workspace/new-project');
 
     assert.equal(created.outcome, 'created');
     assert.ok(created.project);
@@ -42,14 +48,14 @@ test('projectsDb.createProjectPath returns created for fresh paths', async () =>
 });
 
 test('projectsDb.createProjectPath returns reactivated_archived for archived duplicates', async () => {
-  await withIsolatedDatabase(() => {
-    const initial = projectsDb.createProjectPath('/workspace/archived-project', 'Archived Project');
+  await withIsolatedDatabase((userId) => {
+    const initial = projectsDb.createProjectPath(userId, '/workspace/archived-project', 'Archived Project');
     assert.equal(initial.outcome, 'created');
     assert.ok(initial.project);
 
-    projectsDb.updateProjectIsArchived('/workspace/archived-project', true);
+    projectsDb.updateProjectIsArchived(userId, '/workspace/archived-project', true);
 
-    const reused = projectsDb.createProjectPath('/workspace/archived-project', 'Renamed Project');
+    const reused = projectsDb.createProjectPath(userId, '/workspace/archived-project', 'Renamed Project');
     assert.equal(reused.outcome, 'reactivated_archived');
     assert.ok(reused.project);
     assert.equal(reused.project?.project_id, initial.project?.project_id);
@@ -58,12 +64,12 @@ test('projectsDb.createProjectPath returns reactivated_archived for archived dup
 });
 
 test('projectsDb.createProjectPath returns active_conflict for active duplicates', async () => {
-  await withIsolatedDatabase(() => {
-    const initial = projectsDb.createProjectPath('/workspace/active-project');
+  await withIsolatedDatabase((userId) => {
+    const initial = projectsDb.createProjectPath(userId, '/workspace/active-project');
     assert.equal(initial.outcome, 'created');
     assert.ok(initial.project);
 
-    const conflict = projectsDb.createProjectPath('/workspace/active-project');
+    const conflict = projectsDb.createProjectPath(userId, '/workspace/active-project');
     assert.equal(conflict.outcome, 'active_conflict');
     assert.ok(conflict.project);
     assert.equal(conflict.project?.project_id, initial.project?.project_id);
