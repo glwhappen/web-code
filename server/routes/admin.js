@@ -27,8 +27,16 @@ router.post('/users', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    if (username.length < 3 || password.length < 6) {
-      return res.status(400).json({ error: 'Username must be at least 3 characters, password at least 6 characters' });
+    if (username.length < 3) {
+      return res.status(400).json({ error: 'Username must be at least 3 characters' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return res.status(400).json({ error: 'Password must contain uppercase, lowercase, and a number' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -63,6 +71,16 @@ router.delete('/users/:id', (req, res) => {
       return res.status(400).json({ error: 'You cannot delete the currently signed-in administrator' });
     }
 
+    // Prevent deleting the last admin
+    const targetUser = userDb.getUserById(targetUserId);
+    if (targetUser?.isAdmin) {
+      const allUsers = userDb.listUsers();
+      const adminCount = allUsers.filter(u => u.isAdmin).length;
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the last administrator' });
+      }
+    }
+
     const deleted = userDb.deleteUser(targetUserId);
     if (!deleted) {
       return res.status(404).json({ error: 'User not found' });
@@ -72,6 +90,38 @@ router.delete('/users/:id', (req, res) => {
   } catch (error) {
     console.error('Admin delete user error:', error);
     return res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Password reset by admin
+router.put('/users/:id/password', async (req, res) => {
+  try {
+    const targetUserId = Number(req.params.id);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    const newPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'Password must contain uppercase, lowercase, and a number' });
+    }
+
+    const user = userDb.getUserById(targetUserId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    userDb.updatePassword(targetUserId, passwordHash);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin reset password error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 

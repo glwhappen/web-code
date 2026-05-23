@@ -19,8 +19,13 @@ import { sessionsService } from './modules/providers/services/sessions.service.j
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
 import { createNormalizedMessage } from './shared/utils.js';
 
-// Track active sessions
+// Track active sessions – keys are namespaced as `${userId}:${sessionId}`
 const activeCodexSessions = new Map();
+
+function buildCodexSessionKey(userId, sessionId) {
+  const safeUser = userId === null || userId === undefined ? 'unknown' : String(userId);
+  return `${safeUser}:${sessionId}`;
+}
 
 /**
  * Transform Codex SDK event to WebSocket message format
@@ -202,6 +207,7 @@ export async function queryCodex(command, options = {}, ws) {
     permissionMode = 'default'
   } = options;
 
+  const userId = ws?.userId || null;
   const workingDirectory = cwd || projectPath || process.cwd();
   const { sandboxMode, approvalPolicy } = mapPermissionModeToCodexOptions(permissionMode);
 
@@ -236,9 +242,12 @@ export async function queryCodex(command, options = {}, ws) {
       if (!id) {
         return;
       }
-      activeCodexSessions.set(id, {
+      const key = buildCodexSessionKey(userId, id);
+      activeCodexSessions.set(key, {
         thread,
         codex,
+        userId,
+        sessionId: id,
         status: 'running',
         abortController,
         startedAt: new Date().toISOString()
@@ -279,7 +288,7 @@ export async function queryCodex(command, options = {}, ws) {
         break;
       }
       if (capturedSessionId) {
-        const session = activeCodexSessions.get(capturedSessionId);
+        const session = activeCodexSessions.get(buildCodexSessionKey(userId, capturedSessionId));
         if (session?.status === 'aborted') {
           break;
         }
@@ -333,7 +342,7 @@ export async function queryCodex(command, options = {}, ws) {
     }
 
   } catch (error) {
-    const session = capturedSessionId ? activeCodexSessions.get(capturedSessionId) : null;
+    const session = capturedSessionId ? activeCodexSessions.get(buildCodexSessionKey(userId, capturedSessionId)) : null;
     const wasAborted =
       session?.status === 'aborted' ||
       error?.name === 'AbortError' ||
@@ -363,7 +372,7 @@ export async function queryCodex(command, options = {}, ws) {
   } finally {
     // Update session status
     if (capturedSessionId) {
-      const session = activeCodexSessions.get(capturedSessionId);
+      const session = activeCodexSessions.get(buildCodexSessionKey(userId, capturedSessionId));
       if (session) {
         session.status = session.status === 'aborted' ? 'aborted' : 'completed';
       }
@@ -374,10 +383,12 @@ export async function queryCodex(command, options = {}, ws) {
 /**
  * Abort an active Codex session
  * @param {string} sessionId - Session ID to abort
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {boolean} - Whether abort was successful
  */
-export function abortCodexSession(sessionId) {
-  const session = activeCodexSessions.get(sessionId);
+export function abortCodexSession(sessionId, userId = null) {
+  const key = buildCodexSessionKey(userId, sessionId);
+  const session = activeCodexSessions.get(key);
 
   if (!session) {
     return false;
@@ -396,24 +407,29 @@ export function abortCodexSession(sessionId) {
 /**
  * Check if a session is active
  * @param {string} sessionId - Session ID to check
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {boolean} - Whether session is active
  */
-export function isCodexSessionActive(sessionId) {
-  const session = activeCodexSessions.get(sessionId);
+export function isCodexSessionActive(sessionId, userId = null) {
+  const session = activeCodexSessions.get(buildCodexSessionKey(userId, sessionId));
   return session?.status === 'running';
 }
 
 /**
  * Get all active sessions
+ * @param {number|string|null} userId - User identifier (null for all)
  * @returns {Array} - Array of active session info
  */
-export function getActiveCodexSessions() {
+export function getActiveCodexSessions(userId = null) {
   const sessions = [];
 
-  for (const [id, session] of activeCodexSessions.entries()) {
+  for (const [key, session] of activeCodexSessions.entries()) {
     if (session.status === 'running') {
+      if (userId !== null && session.userId !== userId) {
+        continue;
+      }
       sessions.push({
-        id,
+        id: session.sessionId || key,
         status: session.status,
         startedAt: session.startedAt
       });
