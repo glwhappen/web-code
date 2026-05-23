@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist-server/server/index.js",
   "bin": {
-    "cloudcli": "dist-server/server/cli.js"
+    "web-code": "dist-server/server/cli.js"
   },
   "files": [
     "server/",
