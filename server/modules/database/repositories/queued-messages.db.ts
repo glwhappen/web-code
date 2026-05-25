@@ -151,4 +151,22 @@ export const queuedMessagesDb = {
       .prepare('DELETE FROM queued_messages WHERE user_id = ? AND session_id = ? AND id = ?')
       .run(userId, sessionId, id).changes > 0;
   },
+
+  deleteBySession(userId: number, sessionId: string): number {
+    const db = getConnection();
+    return db
+      .prepare('DELETE FROM queued_messages WHERE user_id = ? AND session_id = ?')
+      .run(userId, sessionId).changes;
+  },
+
+  reassignSession(userId: number, sourceSessionId: string, targetSessionId: string): number {
+    const db = getConnection();
+    return db
+      .prepare(
+        `UPDATE queued_messages
+         SET session_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ? AND session_id = ?`
+      )
+      .run(targetSessionId, userId, sourceSessionId).changes;
+  },
 };

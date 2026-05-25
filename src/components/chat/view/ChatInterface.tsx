@@ -129,6 +129,12 @@ function ChatInterface({
     sessionStore,
   });
 
+  const activeViewSessionId = selectedSession?.id || currentSessionId;
+  const activeSessionIsProcessing = useMemo(
+    () => Boolean(activeViewSessionId && processingSessions?.has(activeViewSessionId)),
+    [activeViewSessionId, processingSessions],
+  );
+
   const {
     input,
     setInput,
@@ -206,6 +212,7 @@ function ChatInterface({
     setClaudeStatus,
     setIsUserScrolledUp,
     setPendingPermissionRequests,
+    activeSessionIsProcessing,
   });
 
   // On WebSocket reconnect, re-fetch the current session's messages from the server
