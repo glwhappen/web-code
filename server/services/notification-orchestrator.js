@@ -164,7 +164,7 @@ async function sendWebPush(userId, event) {
     if (result.status === 'rejected') {
       const statusCode = result.reason?.statusCode;
       if (statusCode === 410 || statusCode === 404) {
-        pushSubscriptionsDb.removeSubscription(subscriptions[index].endpoint);
+        pushSubscriptionsDb.removeSubscription(userId, subscriptions[index].endpoint);
       }
     }
   });

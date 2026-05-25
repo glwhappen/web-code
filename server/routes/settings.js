@@ -255,7 +255,7 @@ router.post('/push/unsubscribe', async (req, res) => {
     if (!endpoint) {
       return res.status(400).json({ error: 'Missing endpoint' });
     }
-    pushSubscriptionsDb.removeSubscription(endpoint);
+    pushSubscriptionsDb.removeSubscription(req.user.id, endpoint);
 
     // Disable webPush in preferences to match subscription state
     const currentPrefs = notificationPreferencesDb.getPreferences(req.user.id);
