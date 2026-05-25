@@ -4,6 +4,7 @@ import {
   APP_CONFIG_TABLE_SCHEMA_SQL,
   LAST_SCANNED_AT_SQL,
   PROJECTS_TABLE_SCHEMA_SQL,
+  QUEUED_MESSAGES_TABLE_SCHEMA_SQL,
   PUSH_SUBSCRIPTIONS_TABLE_SCHEMA_SQL,
   SESSIONS_TABLE_SCHEMA_SQL,
   USER_NOTIFICATION_PREFERENCES_TABLE_SCHEMA_SQL,
@@ -476,6 +477,8 @@ export const runMigrations = (db: Database) => {
     db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user_path ON projects(user_id, project_path)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_projects_is_starred ON projects(isStarred)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_projects_is_archived ON projects(isArchived)');
+    db.exec(QUEUED_MESSAGES_TABLE_SCHEMA_SQL);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages(user_id, session_id, created_at)');
 
     db.exec('DROP INDEX IF EXISTS idx_session_names_lookup');
     db.exec('DROP INDEX IF EXISTS idx_sessions_workspace_path');

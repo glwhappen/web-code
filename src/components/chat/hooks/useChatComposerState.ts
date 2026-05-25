@@ -11,7 +11,7 @@ import type {
 } from 'react';
 import { useDropzone } from 'react-dropzone';
 
-import { authenticatedFetch } from '../../../utils/api';
+import { api, authenticatedFetch } from '../../../utils/api';
 import { thinkingModes } from '../constants/thinkingModes';
 import { grantClaudeToolPermission } from '../utils/chatPermissions';
 import { safeLocalStorage } from '../utils/chatStorage';
@@ -78,8 +78,24 @@ interface CommandExecutionResult {
   hasFileIncludes?: boolean;
 }
 
+export interface QueuedChatMessage {
+  id: string;
+  sessionId: string;
+  provider: LLMProvider;
+  content: string;
+  permissionMode: string | null;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
+};
+
+const readApiData = async <T,>(response: Response): Promise<T> => {
+  const payload = await response.json();
+  return (payload?.data ?? payload) as T;
 };
 
 const getNotificationSessionSummary = (
@@ -145,6 +161,8 @@ export function useChatComposerState({
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [thinkingMode, setThinkingMode] = useState('none');
+  const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
+  const [isLoadingQueuedMessages, setIsLoadingQueuedMessages] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHighlightRef = useRef<HTMLDivElement>(null);
@@ -152,7 +170,9 @@ export function useChatComposerState({
     ((event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>) => Promise<void>) | null
   >(null);
   const inputValueRef = useRef(input);
+  const autoSendingQueuedMessageRef = useRef(false);
   const selectedProjectId = selectedProject?.projectId;
+  const activeQueueSessionId = currentSessionId || selectedSession?.id || null;
 
   const handleBuiltInCommand = useCallback(
     (result: CommandExecutionResult) => {
@@ -462,13 +482,137 @@ export function useChatComposerState({
     noKeyboard: true,
   });
 
+  const getCurrentModel = useCallback(() => {
+    if (provider === 'cursor') return cursorModel;
+    if (provider === 'codex') return codexModel;
+    if (provider === 'gemini') return geminiModel;
+    return claudeModel;
+  }, [claudeModel, codexModel, cursorModel, geminiModel, provider]);
+
+  const refreshQueuedMessages = useCallback(async (sessionId: string) => {
+    setIsLoadingQueuedMessages(true);
+    try {
+      const response = await api.queuedMessages(sessionId);
+      if (!response.ok) {
+        throw new Error(`Failed to load queued messages (${response.status})`);
+      }
+      const data = await readApiData<{ messages?: QueuedChatMessage[] }>(response);
+      setQueuedMessages(data.messages ?? []);
+    } catch (error) {
+      console.error('Error loading queued messages:', error);
+      setQueuedMessages([]);
+    } finally {
+      setIsLoadingQueuedMessages(false);
+    }
+  }, []);
+
+  const enqueueQueuedMessage = useCallback(async (content: string) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const response = await api.createQueuedMessage(activeQueueSessionId, {
+        content,
+        provider,
+        permissionMode,
+        model: getCurrentModel(),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to queue message (${response.status})`);
+      }
+      const data = await readApiData<{ message?: QueuedChatMessage }>(response);
+      if (data.message) {
+        setQueuedMessages((previous) => [...previous, data.message!]);
+      } else {
+        await refreshQueuedMessages(activeQueueSessionId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error queueing message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId, getCurrentModel, permissionMode, provider, refreshQueuedMessages]);
+
+  const updateQueuedMessage = useCallback(async (queueId: string, content: string) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const existing = queuedMessages.find((message) => message.id === queueId);
+      const response = await api.updateQueuedMessage(activeQueueSessionId, queueId, {
+        content,
+        provider: existing?.provider ?? provider,
+        permissionMode: existing?.permissionMode ?? permissionMode,
+        model: existing?.model ?? getCurrentModel(),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update queued message (${response.status})`);
+      }
+      const data = await readApiData<{ message?: QueuedChatMessage }>(response);
+      if (data.message) {
+        setQueuedMessages((previous) =>
+          previous.map((message) => (message.id === queueId ? data.message! : message)),
+        );
+      } else {
+        await refreshQueuedMessages(activeQueueSessionId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error updating queued message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId, getCurrentModel, permissionMode, provider, queuedMessages, refreshQueuedMessages]);
+
+  const deleteQueuedMessage = useCallback(async (queueId: string) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const response = await api.deleteQueuedMessage(activeQueueSessionId, queueId);
+      if (!response.ok) {
+        throw new Error(`Failed to delete queued message (${response.status})`);
+      }
+      setQueuedMessages((previous) => previous.filter((message) => message.id !== queueId));
+      return true;
+    } catch (error) {
+      console.error('Error deleting queued message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId]);
+
   const handleSubmit = useCallback(
     async (
       event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
     ) => {
       event.preventDefault();
       const currentInput = inputValueRef.current;
-      if (!currentInput.trim() || isLoading || !selectedProject) {
+      if (!currentInput.trim() || !selectedProject) {
+        return;
+      }
+
+      if (isLoading) {
+        if (attachedImages.length > 0) {
+          window.alert('Image attachments cannot be queued yet.');
+          return;
+        }
+        const queued = await enqueueQueuedMessage(currentInput);
+        if (!queued) {
+          return;
+        }
+        setInput('');
+        inputValueRef.current = '';
+        resetCommandMenuState();
+        setAttachedImages([]);
+        setUploadingImages(new Map());
+        setImageErrors(new Map());
+        setIsTextareaExpanded(false);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+        safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
         return;
       }
 
@@ -684,6 +828,7 @@ export function useChatComposerState({
       codexModel,
       currentSessionId,
       cursorModel,
+      enqueueQueuedMessage,
       executeCommand,
       geminiModel,
       isLoading,
@@ -709,6 +854,39 @@ export function useChatComposerState({
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
+
+  useEffect(() => {
+    if (!activeQueueSessionId) {
+      setQueuedMessages([]);
+      return;
+    }
+
+    void refreshQueuedMessages(activeQueueSessionId);
+  }, [activeQueueSessionId, refreshQueuedMessages]);
+
+  useEffect(() => {
+    if (isLoading || !activeQueueSessionId || queuedMessages.length === 0 || autoSendingQueuedMessageRef.current) {
+      return;
+    }
+
+    const nextMessage = queuedMessages[0];
+    autoSendingQueuedMessageRef.current = true;
+
+    void (async () => {
+      const deleted = await deleteQueuedMessage(nextMessage.id);
+      if (!deleted) {
+        autoSendingQueuedMessageRef.current = false;
+        return;
+      }
+
+      inputValueRef.current = nextMessage.content;
+      setInput(nextMessage.content);
+      await handleSubmitRef.current?.(createFakeSubmitEvent());
+      window.setTimeout(() => {
+        autoSendingQueuedMessageRef.current = false;
+      }, 250);
+    })();
+  }, [activeQueueSessionId, deleteQueuedMessage, isLoading, queuedMessages]);
 
   useEffect(() => {
     inputValueRef.current = input;
@@ -980,5 +1158,9 @@ export function useChatComposerState({
     handleGrantToolPermission,
     handleInputFocusChange,
     isInputFocused,
+    queuedMessages,
+    isLoadingQueuedMessages,
+    updateQueuedMessage,
+    deleteQueuedMessage,
   };
 }
