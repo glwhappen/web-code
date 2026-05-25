@@ -1,4 +1,7 @@
 export {
+  assertUserOwnsProjectPath,
+} from './services/project-authorization.service.js';
+export {
   generateDisplayName,
   getProjectsWithSessions,
 } from './services/projects-with-sessions-fetch.service.js';
