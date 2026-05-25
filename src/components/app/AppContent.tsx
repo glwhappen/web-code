@@ -24,7 +24,7 @@ function AppContentInner() {
   const { sessionId } = useParams<{ sessionId?: string }>();
   const { t } = useTranslation('common');
   const { isMobile } = useDeviceSettings({ trackPWA: false });
-  const { ws, sendMessage, latestMessage, isConnected } = useWebSocket();
+  const { ws, sendMessage, latestMessage, messageEvents, isConnected } = useWebSocket();
   const wasConnectedRef = useRef(false);
 
   const {
@@ -181,6 +181,7 @@ function AppContentInner() {
           ws={ws}
           sendMessage={sendMessage}
           latestMessage={latestMessage}
+          messageEvents={messageEvents}
           isMobile={isMobile}
           onMenuClick={() => setSidebarOpen(true)}
           isLoading={isLoadingProjects}
