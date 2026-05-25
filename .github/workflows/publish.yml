@@ -17,6 +17,17 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npm run build:server
+      - name: Skip if version already published
+        id: npm-check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view @glwhappen/web-code@${VERSION} version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${VERSION} already exists on npm, skipping publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
       - run: npm publish --access public
+        if: steps.npm-check.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
