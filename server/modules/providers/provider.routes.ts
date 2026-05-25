@@ -261,6 +261,26 @@ const parseQueuedMessagePayload = (payload: unknown) => {
   };
 };
 
+const parseQueuedMessageReassignPayload = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new AppError('Request body must be an object.', {
+      code: 'INVALID_REQUEST_BODY',
+      statusCode: 400,
+    });
+  }
+
+  const body = payload as Record<string, unknown>;
+  const targetSessionId = typeof body.targetSessionId === 'string' ? body.targetSessionId.trim() : '';
+  if (!SESSION_ID_PATTERN.test(targetSessionId)) {
+    throw new AppError('targetSessionId is invalid.', {
+      code: 'INVALID_TARGET_SESSION_ID',
+      statusCode: 400,
+    });
+  }
+
+  return { targetSessionId };
+};
+
 const parseSessionRenameSummary = (payload: unknown): string => {
   if (!payload || typeof payload !== 'object') {
     throw new AppError('Request body must be an object.', {
@@ -463,6 +483,17 @@ router.post(
     const sessionId = parseSessionId(req.params.sessionId);
     const message = queuedMessagesDb.create(userId, sessionId, parseQueuedMessagePayload(req.body));
     res.status(201).json(createApiSuccessResponse({ message }));
+  }),
+);
+
+router.post(
+  '/sessions/:sessionId/queued-messages/reassign',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessionId = parseSessionId(req.params.sessionId);
+    const { targetSessionId } = parseQueuedMessageReassignPayload(req.body);
+    const moved = queuedMessagesDb.reassignSession(userId, sessionId, targetSessionId);
+    res.json(createApiSuccessResponse({ moved }));
   }),
 );
 

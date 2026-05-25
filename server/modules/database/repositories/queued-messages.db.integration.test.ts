@@ -82,3 +82,27 @@ test('queuedMessagesDb updates and deletes individual queued messages', async ()
     assert.deepEqual(queuedMessagesDb.listBySession(userId, 'session-1'), []);
   });
 });
+
+test('queuedMessagesDb can reassign and bulk-delete queued messages by session', async () => {
+  await withIsolatedDatabase((userId) => {
+    sessionsDb.createSession(userId, 'session-1', 'claude', '/workspace/demo-project', 'Demo');
+    sessionsDb.createSession(userId, 'session-2', 'claude', '/workspace/demo-project', 'Demo 2');
+    queuedMessagesDb.create(userId, 'session-1', {
+      provider: 'claude',
+      content: 'queued one',
+    });
+    queuedMessagesDb.create(userId, 'session-1', {
+      provider: 'claude',
+      content: 'queued two',
+    });
+
+    const moved = queuedMessagesDb.reassignSession(userId, 'session-1', 'session-2');
+    assert.equal(moved, 2);
+    assert.equal(queuedMessagesDb.listBySession(userId, 'session-1').length, 0);
+    assert.equal(queuedMessagesDb.listBySession(userId, 'session-2').length, 2);
+
+    const deletedCount = queuedMessagesDb.deleteBySession(userId, 'session-2');
+    assert.equal(deletedCount, 2);
+    assert.equal(queuedMessagesDb.listBySession(userId, 'session-2').length, 0);
+  });
+});

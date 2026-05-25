@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { projectsDb, queuedMessagesDb, sessionsDb } from '@/modules/database/index.js';
 import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import type {
   FetchHistoryOptions,
@@ -194,6 +194,7 @@ export const sessionsService = {
         statusCode: 404,
       });
     }
+    queuedMessagesDb.deleteBySession(userId, sessionId);
 
     return {
       sessionId,
