@@ -41,10 +41,19 @@ export const pushSubscriptionsDb = {
       .all(userId) as PushSubscriptionLookupRow[];
   },
 
-  /** Deletes one subscription by endpoint. */
-  deletePushSubscription(endpoint: string): void {
+  /**
+   * Deletes one subscription, but only when the endpoint belongs to `userId`.
+   *
+   * Push endpoint URLs are not secret per se, but they appear in service-worker
+   * registration and network logs; scoping by user prevents user A from
+   * unsubscribing user B by replaying an endpoint they observed.
+   */
+  deletePushSubscription(userId: number, endpoint: string): void {
     const db = getConnection();
-    db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+    db.prepare('DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?').run(
+      userId,
+      endpoint,
+    );
   },
 
   /** Deletes all subscriptions for a user. */
@@ -70,8 +79,8 @@ export const pushSubscriptionsDb = {
   getSubscriptions(userId: number): PushSubscriptionLookupRow[] {
     return pushSubscriptionsDb.getPushSubscriptions(userId);
   },
-  removeSubscription(endpoint: string): void {
-    pushSubscriptionsDb.deletePushSubscription(endpoint);
+  removeSubscription(userId: number, endpoint: string): void {
+    pushSubscriptionsDb.deletePushSubscription(userId, endpoint);
   },
   removeAllForUser(userId: number): void {
     pushSubscriptionsDb.deletePushSubscriptionsForUser(userId);
