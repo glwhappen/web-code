@@ -171,7 +171,10 @@ function ChatInterface({
     handlePermissionDecision,
     handleGrantToolPermission,
     handleInputFocusChange,
-    isInputFocused,
+    queuedMessages,
+    isLoadingQueuedMessages,
+    updateQueuedMessage,
+    deleteQueuedMessage,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -412,6 +415,10 @@ function ChatInterface({
           })}
           isTextareaExpanded={isTextareaExpanded}
           sendByCtrlEnter={sendByCtrlEnter}
+          queuedMessages={queuedMessages}
+          isLoadingQueuedMessages={isLoadingQueuedMessages}
+          onUpdateQueuedMessage={updateQueuedMessage}
+          onDeleteQueuedMessage={deleteQueuedMessage}
         />
       </div>
 

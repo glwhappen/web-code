@@ -1,24 +1,19 @@
-import { useTranslation } from 'react-i18next';
-import type {
-  ChangeEvent,
-  ClipboardEvent,
-  Dispatch,
-  FormEvent,
-  KeyboardEvent,
-  MouseEvent,
-  ReactNode,
-  RefObject,
-  SetStateAction,
-  TouchEvent,
+import { ArrowDownIcon, ImageIcon, MessageSquareIcon, PencilIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
+import {
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type Dispatch,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+  type TouchEvent,
 } from 'react';
-import { ImageIcon, MessageSquareIcon, XIcon, ArrowDownIcon } from 'lucide-react';
-import type { PendingPermissionRequest, PermissionMode, Provider } from '../../types/types';
-import CommandMenu from './CommandMenu';
-import ClaudeStatus from './ClaudeStatus';
-import ImageAttachment from './ImageAttachment';
-import PermissionRequestsBanner from './PermissionRequestsBanner';
-import ThinkingModeSelector from './ThinkingModeSelector';
-import TokenUsagePie from './TokenUsagePie';
+import { useTranslation } from 'react-i18next';
+
 import {
   PromptInput,
   PromptInputHeader,
@@ -29,6 +24,15 @@ import {
   PromptInputButton,
   PromptInputSubmit,
 } from '../../../../shared/view/ui';
+import type { QueuedChatMessage } from '../../hooks/useChatComposerState';
+import type { PendingPermissionRequest, PermissionMode, Provider } from '../../types/types';
+
+import CommandMenu from './CommandMenu';
+import ClaudeStatus from './ClaudeStatus';
+import ImageAttachment from './ImageAttachment';
+import PermissionRequestsBanner from './PermissionRequestsBanner';
+import ThinkingModeSelector from './ThinkingModeSelector';
+import TokenUsagePie from './TokenUsagePie';
 
 interface MentionableFile {
   name: string;
@@ -101,6 +105,10 @@ interface ChatComposerProps {
   placeholder: string;
   isTextareaExpanded: boolean;
   sendByCtrlEnter?: boolean;
+  queuedMessages: QueuedChatMessage[];
+  isLoadingQueuedMessages: boolean;
+  onUpdateQueuedMessage: (queueId: string, content: string) => Promise<boolean>;
+  onDeleteQueuedMessage: (queueId: string) => Promise<boolean>;
 }
 
 export default function ChatComposer({
@@ -156,8 +164,14 @@ export default function ChatComposer({
   placeholder,
   isTextareaExpanded,
   sendByCtrlEnter,
+  queuedMessages,
+  isLoadingQueuedMessages,
+  onUpdateQueuedMessage,
+  onDeleteQueuedMessage,
 }: ChatComposerProps) {
   const { t } = useTranslation('chat');
+  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
+  const [editingQueueContent, setEditingQueueContent] = useState('');
   const textareaRect = textareaRef.current?.getBoundingClientRect();
   const commandMenuPosition = {
     top: textareaRect ? Math.max(16, textareaRect.top - 316) : 0,
@@ -172,6 +186,20 @@ export default function ChatComposer({
 
   // Hide the thinking/status bar while any permission request is pending
   const hasPendingPermissions = pendingPermissionRequests.length > 0;
+
+  const startEditingQueueMessage = (message: QueuedChatMessage) => {
+    setEditingQueueId(message.id);
+    setEditingQueueContent(message.content);
+  };
+
+  const saveEditingQueueMessage = async () => {
+    if (!editingQueueId || !editingQueueContent.trim()) return;
+    const updated = await onUpdateQueuedMessage(editingQueueId, editingQueueContent);
+    if (updated) {
+      setEditingQueueId(null);
+      setEditingQueueContent('');
+    }
+  };
 
   return (
     <div className="flex-shrink-0 p-2 pb-2 sm:p-4 sm:pb-4 md:p-4 md:pb-6">
@@ -195,6 +223,69 @@ export default function ChatComposer({
       )}
 
       {!hasQuestionPanel && <div className="relative mx-auto max-w-4xl">
+        {(queuedMessages.length > 0 || isLoadingQueuedMessages) && (
+          <div className="mb-2 rounded-lg border border-border/50 bg-card/80 text-sm shadow-sm backdrop-blur-sm">
+            <div className="flex items-center justify-between border-b border-border/30 px-3 py-2">
+              <span className="font-medium text-foreground">
+                {t('input.queue.title', { defaultValue: 'Queued messages' })}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isLoadingQueuedMessages
+                  ? t('input.queue.loading', { defaultValue: 'Loading' })
+                  : queuedMessages.length}
+              </span>
+            </div>
+            <div className="max-h-44 overflow-y-auto">
+              {queuedMessages.map((message) => {
+                const isEditing = editingQueueId === message.id;
+                return (
+                  <div key={message.id} className="flex gap-2 border-b border-border/20 px-3 py-2 last:border-b-0">
+                    <div className="min-w-0 flex-1">
+                      {isEditing ? (
+                        <textarea
+                          value={editingQueueContent}
+                          onChange={(event) => setEditingQueueContent(event.target.value)}
+                          className="max-h-28 min-h-16 w-full resize-y rounded-md border border-border/60 bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        />
+                      ) : (
+                        <div className="line-clamp-2 whitespace-pre-wrap break-words text-foreground">
+                          {message.content}
+                        </div>
+                      )}
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {message.provider}
+                      </div>
+                    </div>
+                    <div className="flex flex-shrink-0 items-start gap-1">
+                      {isEditing ? (
+                        <PromptInputButton
+                          tooltip={{ content: t('input.queue.save', { defaultValue: 'Save queued message' }) }}
+                          onClick={saveEditingQueueMessage}
+                          disabled={!editingQueueContent.trim()}
+                        >
+                          <SaveIcon />
+                        </PromptInputButton>
+                      ) : (
+                        <PromptInputButton
+                          tooltip={{ content: t('input.queue.edit', { defaultValue: 'Edit queued message' }) }}
+                          onClick={() => startEditingQueueMessage(message)}
+                        >
+                          <PencilIcon />
+                        </PromptInputButton>
+                      )}
+                      <PromptInputButton
+                        tooltip={{ content: t('input.queue.delete', { defaultValue: 'Delete queued message' }) }}
+                        onClick={() => onDeleteQueuedMessage(message.id)}
+                      >
+                        <Trash2Icon />
+                      </PromptInputButton>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {isUserScrolledUp && hasMessages && (
           <div className="absolute -top-10 left-0 right-0 z-10 flex justify-center">
             <button
@@ -382,7 +473,7 @@ export default function ChatComposer({
               <PromptInputButton
                 tooltip={{ content: t('input.clearInput', { defaultValue: 'Clear input' }) }}
                 onClick={onClearInput}
-                className="hidden sm:No-flex"
+                className="hidden sm:flex"
               >
                 <XIcon />
               </PromptInputButton>
@@ -399,7 +490,8 @@ export default function ChatComposer({
               {sendByCtrlEnter ? t('input.hintText.ctrlEnter') : t('input.hintText.enter')}
             </div>
             <PromptInputSubmit
-              disabled={!input.trim() || isLoading}
+              status={isLoading && !input.trim() ? 'streaming' : 'ready'}
+              disabled={!input.trim()}
               className="h-10 w-10 sm:h-10 sm:w-10"
               onMouseDown={(event) => {
                 event.preventDefault();

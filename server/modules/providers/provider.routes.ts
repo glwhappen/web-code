@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 
+import { queuedMessagesDb } from '@/modules/database/index.js';
 import { providerAuthService } from '@/modules/providers/services/provider-auth.service.js';
 import { providerMcpService } from '@/modules/providers/services/mcp.service.js';
 import { providerSkillsService } from '@/modules/providers/services/skills.service.js';
@@ -52,6 +53,8 @@ const normalizeProviderParam = (value: unknown): string =>
   readPathParam(value, 'provider').trim().toLowerCase();
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9._-]{1,120}$/;
+const QUEUED_MESSAGE_ID_PATTERN = /^[a-zA-Z0-9._-]{1,120}$/;
+const MAX_QUEUED_MESSAGE_LENGTH = 100_000;
 
 const parseSessionId = (value: unknown): string => {
   const sessionId = readPathParam(value, 'sessionId').trim();
@@ -63,6 +66,18 @@ const parseSessionId = (value: unknown): string => {
   }
 
   return sessionId;
+};
+
+const parseQueuedMessageId = (value: unknown): string => {
+  const queueId = readPathParam(value, 'queueId').trim();
+  if (!QUEUED_MESSAGE_ID_PATTERN.test(queueId)) {
+    throw new AppError('Invalid queueId.', {
+      code: 'INVALID_QUEUE_ID',
+      statusCode: 400,
+    });
+  }
+
+  return queueId;
 };
 
 const readOptionalQueryString = (value: unknown): string | undefined => {
@@ -204,6 +219,46 @@ const parseProvider = (value: unknown): LLMProvider => {
     code: 'UNSUPPORTED_PROVIDER',
     statusCode: 400,
   });
+};
+
+const parseQueuedMessagePayload = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') {
+    throw new AppError('Request body must be an object.', {
+      code: 'INVALID_REQUEST_BODY',
+      statusCode: 400,
+    });
+  }
+
+  const body = payload as Record<string, unknown>;
+  const content = typeof body.content === 'string' ? body.content.trim() : '';
+  if (!content) {
+    throw new AppError('content is required.', {
+      code: 'QUEUED_MESSAGE_CONTENT_REQUIRED',
+      statusCode: 400,
+    });
+  }
+  if (content.length > MAX_QUEUED_MESSAGE_LENGTH) {
+    throw new AppError('content is too long.', {
+      code: 'QUEUED_MESSAGE_CONTENT_TOO_LONG',
+      statusCode: 400,
+    });
+  }
+
+  const provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
+  if (provider !== 'claude' && provider !== 'codex' && provider !== 'cursor' && provider !== 'gemini') {
+    throw new AppError('provider is invalid.', {
+      code: 'INVALID_PROVIDER',
+      statusCode: 400,
+    });
+  }
+
+  return {
+    content,
+    provider,
+    permissionMode: typeof body.permissionMode === 'string' ? body.permissionMode : null,
+    model: typeof body.model === 'string' ? body.model : null,
+    metadata: body.metadata,
+  };
 };
 
 const parseSessionRenameSummary = (payload: unknown): string => {
@@ -388,6 +443,60 @@ router.put(
     const summary = parseSessionRenameSummary(req.body);
     const result = sessionsService.renameSessionById(userId, sessionId, summary);
     res.json(createApiSuccessResponse(result));
+  }),
+);
+
+router.get(
+  '/sessions/:sessionId/queued-messages',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessionId = parseSessionId(req.params.sessionId);
+    const messages = queuedMessagesDb.listBySession(userId, sessionId);
+    res.json(createApiSuccessResponse({ messages }));
+  }),
+);
+
+router.post(
+  '/sessions/:sessionId/queued-messages',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessionId = parseSessionId(req.params.sessionId);
+    const message = queuedMessagesDb.create(userId, sessionId, parseQueuedMessagePayload(req.body));
+    res.status(201).json(createApiSuccessResponse({ message }));
+  }),
+);
+
+router.put(
+  '/sessions/:sessionId/queued-messages/:queueId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessionId = parseSessionId(req.params.sessionId);
+    const queueId = parseQueuedMessageId(req.params.queueId);
+    const message = queuedMessagesDb.update(userId, sessionId, queueId, parseQueuedMessagePayload(req.body));
+    if (!message) {
+      throw new AppError('Queued message not found.', {
+        code: 'QUEUED_MESSAGE_NOT_FOUND',
+        statusCode: 404,
+      });
+    }
+    res.json(createApiSuccessResponse({ message }));
+  }),
+);
+
+router.delete(
+  '/sessions/:sessionId/queued-messages/:queueId',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessionId = parseSessionId(req.params.sessionId);
+    const queueId = parseQueuedMessageId(req.params.queueId);
+    const deleted = queuedMessagesDb.delete(userId, sessionId, queueId);
+    if (!deleted) {
+      throw new AppError('Queued message not found.', {
+        code: 'QUEUED_MESSAGE_NOT_FOUND',
+        statusCode: 404,
+      });
+    }
+    res.json(createApiSuccessResponse({ deleted: true }));
   }),
 );
 
