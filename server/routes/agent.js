@@ -12,7 +12,8 @@ import { spawnGemini } from '../gemini-cli.js';
 import { Octokit } from '@octokit/rest';
 import { CLAUDE_MODELS, CURSOR_MODELS, CODEX_MODELS } from '../../shared/modelConstants.js';
 import { IS_PLATFORM } from '../constants/config.js';
-import { normalizeProjectPath } from '../shared/utils.js';
+import { assertUserOwnsProjectPath } from '../modules/projects/services/project-authorization.service.js';
+import { AppError, ensureUserWorkspaceRoot, normalizeProjectPath, validateWorkspacePath } from '../shared/utils.js';
 
 const router = express.Router();
 
@@ -880,7 +881,17 @@ router.post('/', validateExternalApiKey, async (req, res) => {
 
       let targetPath;
       if (projectPath) {
-        targetPath = projectPath;
+        // Confine clone destinations to the caller's per-user workspace root so
+        // an API key cannot drop a fresh checkout into another user's directory.
+        const userWorkspaceRoot = await ensureUserWorkspaceRoot(req.user.username);
+        const validation = await validateWorkspacePath(projectPath, userWorkspaceRoot);
+        if (!validation.valid) {
+          return res.status(403).json({
+            success: false,
+            error: validation.error || 'Invalid project path for clone destination',
+          });
+        }
+        targetPath = validation.resolvedPath || projectPath;
       } else {
         // Generate a unique path for cloning
         const repoHash = crypto.createHash('md5').update(githubUrl + Date.now()).digest('hex');
@@ -889,10 +900,21 @@ router.post('/', validateExternalApiKey, async (req, res) => {
 
       finalProjectPath = await cloneGitHubRepo(githubUrl.trim(), tokenToUse, targetPath);
     } else {
-      // Use existing project path
-      finalProjectPath = normalizeProjectPath(path.resolve(projectPath));
+      // Existing project path: only the owning user may operate on it.
+      try {
+        finalProjectPath = assertUserOwnsProjectPath(req.user.id, projectPath);
+      } catch (authorizationError) {
+        if (authorizationError instanceof AppError) {
+          return res.status(authorizationError.statusCode).json({
+            success: false,
+            error: authorizationError.message,
+            code: authorizationError.code,
+          });
+        }
+        throw authorizationError;
+      }
 
-      // Verify the path exists
+      // Verify the path exists on disk; ownership check above already confirmed registration.
       try {
         await fs.access(finalProjectPath);
       } catch (error) {
@@ -902,10 +924,15 @@ router.post('/', validateExternalApiKey, async (req, res) => {
 
     finalProjectPath = normalizeProjectPath(finalProjectPath);
 
-    // Warn if the same project path is actively used by another user
+    // Reject cross-user shared paths outright; previous warn-only behavior let
+    // user A operate inside a path also registered to user B.
     const sharedPathCheck = projectsDb.isProjectPathUsedByOthers(req.user.id, finalProjectPath);
     if (sharedPathCheck.used) {
-      console.warn(`[WARN] Project path "${finalProjectPath}" is shared with user(s): ${sharedPathCheck.usernames.join(', ')}`);
+      return res.status(403).json({
+        success: false,
+        error: 'Project path is already registered to another user',
+        code: 'PROJECT_PATH_CROSS_USER',
+      });
     }
 
     // Register project path in DB (or reuse existing active registration)
