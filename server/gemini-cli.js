@@ -14,7 +14,19 @@ import { createNormalizedMessage } from './shared/utils.js';
 // Use cross-spawn on Windows for correct .cmd resolution (same pattern as cursor-cli.js)
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
 
-let activeGeminiProcesses = new Map(); // Track active processes by session ID
+// Active Gemini sessions keyed by session ID. Each value is
+// `{ process, userId }` so abort/check helpers can refuse to act on a
+// session that does not belong to the calling user — without the userId
+// tag, knowing any session ID was enough to kill another user's run.
+let activeGeminiProcesses = new Map();
+
+function geminiOwnerMatches(entry, userId) {
+    if (!entry) return false;
+    if (userId === null || userId === undefined) {
+        return entry.userId === null || entry.userId === undefined;
+    }
+    return entry.userId === userId;
+}
 
 function mapGeminiExitCodeToMessage(exitCode) {
     switch (exitCode) {
@@ -320,7 +332,7 @@ async function spawnGemini(command, options = {}, ws) {
 
         // Store process reference for potential abort
         const processKey = capturedSessionId || sessionId || Date.now().toString();
-        activeGeminiProcesses.set(processKey, geminiProcess);
+        activeGeminiProcesses.set(processKey, { process: geminiProcess, userId: ws?.userId ?? null });
 
         // Store sessionId on the process object for debugging
         geminiProcess.sessionId = processKey;
@@ -405,7 +417,7 @@ async function spawnGemini(command, options = {}, ws) {
 
                         if (processKey !== capturedSessionId) {
                             activeGeminiProcesses.delete(processKey);
-                            activeGeminiProcesses.set(capturedSessionId, geminiProcess);
+                            activeGeminiProcesses.set(capturedSessionId, { process: geminiProcess, userId: ws?.userId ?? null });
                         }
 
                         geminiProcess.sessionId = capturedSessionId;
@@ -573,45 +585,53 @@ async function spawnGemini(command, options = {}, ws) {
     });
 }
 
-function abortGeminiSession(sessionId) {
-    let geminiProc = activeGeminiProcesses.get(sessionId);
+function abortGeminiSession(sessionId, userId) {
+    let entry = activeGeminiProcesses.get(sessionId);
     let processKey = sessionId;
 
-    if (!geminiProc) {
-        for (const [key, proc] of activeGeminiProcesses.entries()) {
-            if (proc.sessionId === sessionId) {
-                geminiProc = proc;
+    if (!entry) {
+        for (const [key, candidate] of activeGeminiProcesses.entries()) {
+            if (candidate.process?.sessionId === sessionId) {
+                entry = candidate;
                 processKey = key;
                 break;
             }
         }
     }
 
-    if (geminiProc) {
-        try {
-            geminiProc.kill('SIGTERM');
-            setTimeout(() => {
-                if (activeGeminiProcesses.has(processKey)) {
-                    try {
-                        geminiProc.kill('SIGKILL');
-                    } catch (e) { }
-                }
-            }, 2000); // Wait 2 seconds before force kill
+    if (!geminiOwnerMatches(entry, userId)) {
+        return false;
+    }
 
-            return true;
-        } catch (error) {
-            return false;
+    const geminiProc = entry.process;
+    try {
+        geminiProc.kill('SIGTERM');
+        setTimeout(() => {
+            if (activeGeminiProcesses.has(processKey)) {
+                try {
+                    geminiProc.kill('SIGKILL');
+                } catch (e) { }
+            }
+        }, 2000); // Wait 2 seconds before force kill
+
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function isGeminiSessionActive(sessionId, userId) {
+    return geminiOwnerMatches(activeGeminiProcesses.get(sessionId), userId);
+}
+
+function getActiveGeminiSessions(userId) {
+    const sessions = [];
+    for (const [sessionId, entry] of activeGeminiProcesses.entries()) {
+        if (geminiOwnerMatches(entry, userId)) {
+            sessions.push(sessionId);
         }
     }
-    return false;
-}
-
-function isGeminiSessionActive(sessionId) {
-    return activeGeminiProcesses.has(sessionId);
-}
-
-function getActiveGeminiSessions() {
-    return Array.from(activeGeminiProcesses.keys());
+    return sessions;
 }
 
 export {
