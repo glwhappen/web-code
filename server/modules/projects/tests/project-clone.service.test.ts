@@ -13,6 +13,7 @@ function buildDependencies(overrides: Partial<NonNullable<TestDependencies>> = {
   return {
     validatePath: async () => ({ valid: true, resolvedPath: '/workspace/root' }),
     ensureDirectory: async () => undefined,
+    resolveUserWorkspaceRoot: async () => '/workspace/root',
     pathExists: async () => false,
     removePath: async () => undefined,
     getGithubTokenById: async () => ({ github_token: 'token-value' }),
@@ -49,6 +50,7 @@ test('startCloneProject rejects when workspace path is missing', async () => {
           workspacePath: '',
           githubUrl: 'https://github.com/example/repo',
           userId: 1,
+          username: 'tester',
         },
         {
           onProgress: () => undefined,
@@ -72,6 +74,7 @@ test('startCloneProject rejects when github URL is missing', async () => {
           workspacePath: '/workspace/root',
           githubUrl: '',
           userId: 1,
+          username: 'tester',
         },
         {
           onProgress: () => undefined,
@@ -95,6 +98,7 @@ test('startCloneProject rejects github URL values that begin with option prefixe
           workspacePath: '/workspace/root',
           githubUrl: '--upload-pack=malicious',
           userId: 1,
+          username: 'tester',
         },
         {
           onProgress: () => undefined,
@@ -119,6 +123,7 @@ test('startCloneProject rejects when selected github token does not exist', asyn
           githubUrl: 'https://github.com/example/repo',
           githubTokenId: 12,
           userId: 1,
+          username: 'tester',
         },
         {
           onProgress: () => undefined,
@@ -144,11 +149,14 @@ test('startCloneProject completes and emits complete payload when git exits succ
   let capturedProjectPath = '';
   let capturedCustomName = '';
 
+  let capturedUsername = '';
+
   const operation = await startCloneProject(
     {
       workspacePath: '/workspace/root',
       githubUrl: 'https://github.com/example/repo.git',
       userId: 1,
+      username: 'tester',
     },
     {
       onProgress: (message) => {
@@ -160,8 +168,9 @@ test('startCloneProject completes and emits complete payload when git exits succ
     },
     buildDependencies({
       spawnGitClone: () => gitProcess as any,
-      registerProject: async (userId, projectPath, customName) => {
+      registerProject: async (userId, username, projectPath, customName) => {
         capturedUserId = userId;
+        capturedUsername = username;
         capturedProjectPath = projectPath;
         capturedCustomName = customName;
         return { project: { projectId: 'project-1', path: projectPath } };
@@ -174,6 +183,7 @@ test('startCloneProject completes and emits complete payload when git exits succ
 
   assert.ok(progressMessages.some((message) => message.includes("Cloning into 'repo'")));
   assert.equal(capturedUserId, 1);
+  assert.equal(capturedUsername, 'tester');
   assert.equal(capturedCustomName, 'repo');
   assert.equal(path.basename(capturedProjectPath), 'repo');
   assert.notEqual(completePayload, null);

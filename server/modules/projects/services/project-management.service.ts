@@ -7,17 +7,24 @@ import type {
   ProjectRepositoryRow,
   WorkspacePathValidationResult,
 } from '@/shared/types.js';
-import { AppError, normalizeProjectPath, validateWorkspacePath } from '@/shared/utils.js';
+import {
+  AppError,
+  ensureUserWorkspaceRoot,
+  normalizeProjectPath,
+  validateWorkspacePath,
+} from '@/shared/utils.js';
 
 type CreateProjectInput = {
   userId: number;
+  username: string;
   projectPath: string;
   customName?: string | null;
 };
 
 type CreateProjectDependencies = {
-  validatePath: (projectPath: string) => Promise<WorkspacePathValidationResult>;
+  validatePath: (projectPath: string, workspaceRoot: string) => Promise<WorkspacePathValidationResult>;
   ensureWorkspaceDirectory: (projectPath: string) => Promise<void>;
+  resolveUserWorkspaceRoot: (username: string) => Promise<string>;
   persistProjectPath: (userId: number, projectPath: string, customName: string | null) => CreateProjectPathResult;
   getProjectByPath: (userId: number, projectPath: string) => ProjectRepositoryRow | null;
 };
@@ -57,6 +64,7 @@ const defaultDependencies: CreateProjectDependencies = {
       });
     }
   },
+  resolveUserWorkspaceRoot: ensureUserWorkspaceRoot,
   persistProjectPath: (userId: number, projectPath: string, customName: string | null): CreateProjectPathResult =>
     projectsDb.createProjectPath(userId, projectPath, customName),
   getProjectByPath: (userId: number, projectPath: string): ProjectRepositoryRow | null =>
@@ -111,7 +119,8 @@ export async function createProject(
     });
   }
 
-  const pathValidation = await dependencies.validatePath(normalizedPath);
+  const userWorkspaceRoot = await dependencies.resolveUserWorkspaceRoot(input.username);
+  const pathValidation = await dependencies.validatePath(normalizedPath, userWorkspaceRoot);
   if (!pathValidation.valid || !pathValidation.resolvedPath) {
     throw new AppError('Invalid project path', {
       code: 'INVALID_PROJECT_PATH',

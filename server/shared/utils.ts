@@ -99,12 +99,66 @@ export class AppError extends Error {
 // ---------------------------
 //----------------- WORKSPACE PATH VALIDATION UTILITIES ------------
 /**
- * Root directory that all workspace/project paths must stay under.
+ * Shared base directory under which every website user gets their own
+ * subdirectory. The per-user root is always `<WORKSPACES_ROOT>/<username>` —
+ * even when an operator sets `WORKSPACES_ROOT` explicitly — so that two
+ * website users can never browse/create projects in each other's space.
  *
- * This is resolved from `WORKSPACES_ROOT` when configured; otherwise it falls
- * back to the current user's home directory.
+ * Default is `<homedir>/web-code-workspaces` so the app keeps its files in a
+ * dedicated directory instead of polluting the host user's home.
  */
-export const WORKSPACES_ROOT = process.env.WORKSPACES_ROOT || os.homedir();
+export const WORKSPACES_ROOT =
+  process.env.WORKSPACES_ROOT || path.join(os.homedir(), 'web-code-workspaces');
+
+/**
+ * Strips characters that are unsafe in directory names so a malicious or
+ * unusual username cannot escape its workspace sandbox or collide with
+ * sibling directories. Returns null if the result is empty/`.`/`..`.
+ */
+export function sanitizeUsernameForPath(username: unknown): string | null {
+  if (typeof username !== 'string') {
+    return null;
+  }
+
+  const trimmed = username.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sanitized = trimmed.replace(/[^A-Za-z0-9._-]/g, '_');
+  if (!sanitized || sanitized === '.' || sanitized === '..') {
+    return null;
+  }
+
+  return sanitized;
+}
+
+/**
+ * Returns the absolute per-user workspace root for `username`. Does not touch
+ * the filesystem; callers that need the directory to exist before use should
+ * call `ensureUserWorkspaceRoot` instead.
+ */
+export function getUserWorkspaceRoot(username: unknown): string {
+  const safe = sanitizeUsernameForPath(username);
+  if (!safe) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  return path.join(WORKSPACES_ROOT, safe);
+}
+
+/**
+ * Ensures the per-user workspace directory exists (mkdir -p) and returns its
+ * absolute path. Safe to call on every request — `recursive: true` makes it
+ * idempotent.
+ */
+export async function ensureUserWorkspaceRoot(username: unknown): Promise<string> {
+  const userRoot = getUserWorkspaceRoot(username);
+  await mkdir(userRoot, { recursive: true });
+  return userRoot;
+}
 
 /**
  * System-critical paths that must never be used as workspace roots.
@@ -201,10 +255,14 @@ export function normalizeProjectPath(inputPath: string): string {
  * Validates that a user-supplied workspace path is safe to use.
  *
  * Call this before any filesystem mutation that creates or registers projects.
- * The function resolves symlinks, enforces `WORKSPACES_ROOT` containment, and
- * blocks known system directories.
+ * The function resolves symlinks, enforces containment within `workspaceRoot`
+ * (defaults to the app-wide `WORKSPACES_ROOT`), and blocks known system
+ * directories. Pass the per-user root for multi-user isolation.
  */
-export async function validateWorkspacePath(requestedPath: string): Promise<WorkspacePathValidationResult> {
+export async function validateWorkspacePath(
+  requestedPath: string,
+  workspaceRoot: string = WORKSPACES_ROOT,
+): Promise<WorkspacePathValidationResult> {
   try {
     const normalizedRequestedPath = normalizeProjectPath(requestedPath);
     if (!normalizedRequestedPath) {
@@ -267,14 +325,17 @@ export async function validateWorkspacePath(requestedPath: string): Promise<Work
       }
     }
 
-    const resolvedWorkspaceRoot = normalizeProjectPath(await realpath(WORKSPACES_ROOT));
+    // Ensure the workspace root exists before realpath so we can give a clean
+    // error to admins who haven't created it yet. Cheap & idempotent.
+    await mkdir(workspaceRoot, { recursive: true });
+    const resolvedWorkspaceRoot = normalizeProjectPath(await realpath(workspaceRoot));
     if (
       !resolvedPath.startsWith(`${resolvedWorkspaceRoot}${path.sep}`)
       && resolvedPath !== resolvedWorkspaceRoot
     ) {
       return {
         valid: false,
-        error: `Workspace path must be within the allowed workspace root: ${WORKSPACES_ROOT}`,
+        error: `Workspace path must be within the allowed workspace root: ${workspaceRoot}`,
       };
     }
 
