@@ -12,6 +12,7 @@ const router = express.Router();
 
 type AuthenticatedUser = {
   id?: number | string;
+  username?: string;
 };
 
 function getAuthenticatedUserId(req: express.Request): number {
@@ -31,6 +32,18 @@ function getAuthenticatedUserId(req: express.Request): number {
     });
   }
   return numericId;
+}
+
+function getAuthenticatedUsername(req: express.Request): string {
+  const authenticatedUser = (req as typeof req & { user?: AuthenticatedUser }).user;
+  const username = authenticatedUser?.username;
+  if (typeof username !== 'string' || username.length === 0) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  return username;
 }
 
 function readQueryStringValue(value: unknown): string {
@@ -138,6 +151,7 @@ router.post(
 
     const projectCreationResult = await createProject({
       userId: getAuthenticatedUserId(req),
+      username: getAuthenticatedUsername(req),
       projectPath,
       customName,
     });
@@ -203,6 +217,7 @@ router.get('/clone-progress', async (req, res) => {
         statusCode: 401,
       });
     }
+    const username = getAuthenticatedUsername(req);
     cloneOperation = await startCloneProject(
       {
         workspacePath,
@@ -210,6 +225,7 @@ router.get('/clone-progress', async (req, res) => {
         githubTokenId,
         newGithubToken,
         userId,
+        username,
       },
       {
         onProgress: (message) => {
