@@ -5,7 +5,7 @@ import path from 'node:path';
 import { githubTokensDb } from '@/modules/database/index.js';
 import { createProject } from '@/modules/projects/services/project-management.service.js';
 import type { WorkspacePathValidationResult } from '@/shared/types.js';
-import { AppError, validateWorkspacePath } from '@/shared/utils.js';
+import { AppError, ensureUserWorkspaceRoot, validateWorkspacePath } from '@/shared/utils.js';
 
 type CloneProjectInput = {
   workspacePath: string;
@@ -13,6 +13,7 @@ type CloneProjectInput = {
   githubTokenId?: number | null;
   newGithubToken?: string | null;
   userId: number | string;
+  username: string;
 };
 
 type CloneCompletePayload = {
@@ -34,8 +35,9 @@ type GitCloneProcess = {
 };
 
 type CloneProjectDependencies = {
-  validatePath: (requestedPath: string) => Promise<WorkspacePathValidationResult>;
+  validatePath: (requestedPath: string, workspaceRoot: string) => Promise<WorkspacePathValidationResult>;
   ensureDirectory: (directoryPath: string) => Promise<void>;
+  resolveUserWorkspaceRoot: (username: string) => Promise<string>;
   pathExists: (targetPath: string) => Promise<boolean>;
   removePath: (targetPath: string) => Promise<void>;
   getGithubTokenById: (
@@ -45,6 +47,7 @@ type CloneProjectDependencies = {
   spawnGitClone: (cloneUrl: string, clonePath: string) => GitCloneProcess;
   registerProject: (
     userId: number,
+    username: string,
     projectPath: string,
     customName: string,
   ) => Promise<{ project: Record<string, unknown> }>;
@@ -115,6 +118,7 @@ const defaultDependencies: CloneProjectDependencies = {
   ensureDirectory: async (directoryPath: string): Promise<void> => {
     await mkdir(directoryPath, { recursive: true });
   },
+  resolveUserWorkspaceRoot: ensureUserWorkspaceRoot,
   pathExists: defaultPathExists,
   removePath: async (targetPath: string): Promise<void> => {
     await rm(targetPath, { recursive: true, force: true });
@@ -138,11 +142,13 @@ const defaultDependencies: CloneProjectDependencies = {
     }) as unknown as GitCloneProcess,
   registerProject: async (
     userId: number,
+    username: string,
     projectPath: string,
     customName: string,
   ): Promise<{ project: Record<string, unknown> }> =>
     createProject({
       userId,
+      username,
       projectPath,
       customName,
     }) as Promise<{ project: Record<string, unknown> }>,
@@ -180,7 +186,15 @@ export async function startCloneProject(
     });
   }
 
-  const pathValidation = await dependencies.validatePath(normalizedWorkspacePath);
+  if (!input.username || typeof input.username !== 'string') {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+
+  const userWorkspaceRoot = await dependencies.resolveUserWorkspaceRoot(input.username);
+  const pathValidation = await dependencies.validatePath(normalizedWorkspacePath, userWorkspaceRoot);
   if (!pathValidation.valid || !pathValidation.resolvedPath) {
     throw new AppError(pathValidation.error || 'Invalid workspace path', {
       code: 'INVALID_PROJECT_PATH',
@@ -264,7 +278,7 @@ export async function startCloneProject(
     gitProcess.on('close', async (code) => {
       if (code === 0) {
         try {
-          const createdProject = await dependencies.registerProject(numericUserId, clonePath, repoName);
+          const createdProject = await dependencies.registerProject(numericUserId, input.username, clonePath, repoName);
           handlers.onComplete({
             project: createdProject.project,
             message: 'Repository cloned successfully',

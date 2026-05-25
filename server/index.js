@@ -11,7 +11,7 @@ import express from 'express';
 import cors from 'cors';
 import mime from 'mime-types';
 
-import { AppError, WORKSPACES_ROOT, validateWorkspacePath } from '@/shared/utils.js';
+import { AppError, WORKSPACES_ROOT, ensureUserWorkspaceRoot, validateWorkspacePath } from '@/shared/utils.js';
 import { closeSessionsWatcher, initializeSessionsWatcher } from '@/modules/providers/index.js';
 import { createWebSocketServer } from '@/modules/websocket/index.js';
 
@@ -289,13 +289,16 @@ app.post('/api/system/update', authenticateToken, async (req, res) => {
     }
 });
 
-const expandWorkspacePath = (inputPath) => {
-    if (!inputPath) return inputPath;
+// `~` expands to the caller's per-user workspace root so the file browser
+// lands in the user's own sandbox instead of the host user's home.
+const expandWorkspacePath = (inputPath, userWorkspaceRoot) => {
+    const root = userWorkspaceRoot || WORKSPACES_ROOT;
+    if (!inputPath) return root;
     if (inputPath === '~') {
-        return WORKSPACES_ROOT;
+        return root;
     }
     if (inputPath.startsWith('~/') || inputPath.startsWith('~\\')) {
-        return path.join(WORKSPACES_ROOT, inputPath.slice(2));
+        return path.join(root, inputPath.slice(2));
     }
     return inputPath;
 };
@@ -305,17 +308,17 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     try {
         const { path: dirPath } = req.query;
 
+        const userWorkspaceRoot = await ensureUserWorkspaceRoot(req.user?.username);
+
         console.log('[API] Browse filesystem request for path:', dirPath);
-        console.log('[API] WORKSPACES_ROOT is:', WORKSPACES_ROOT);
-        // Default to home directory if no path provided
-        const defaultRoot = WORKSPACES_ROOT;
-        let targetPath = dirPath ? expandWorkspacePath(dirPath) : defaultRoot;
+        console.log('[API] User workspace root:', userWorkspaceRoot);
+        let targetPath = expandWorkspacePath(dirPath, userWorkspaceRoot);
 
         // Resolve and normalize the path
         targetPath = path.resolve(targetPath);
 
-        // Security check - ensure path is within allowed workspace root
-        const validation = await validateWorkspacePath(targetPath);
+        // Security check - confine browsing to the caller's per-user root
+        const validation = await validateWorkspacePath(targetPath, userWorkspaceRoot);
         if (!validation.valid) {
             return res.status(403).json({ error: validation.error });
         }
@@ -352,13 +355,13 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
                 return a.name.localeCompare(b.name);
             });
 
-        // Add common directories if browsing home directory
+        // At the user's root, surface common project folders (if present) first.
         const suggestions = [];
-        let resolvedWorkspaceRoot = defaultRoot;
+        let resolvedWorkspaceRoot = userWorkspaceRoot;
         try {
-            resolvedWorkspaceRoot = await fsPromises.realpath(defaultRoot);
+            resolvedWorkspaceRoot = await fsPromises.realpath(userWorkspaceRoot);
         } catch (error) {
-            // Use default root as-is if realpath fails
+            // Use user root as-is if realpath fails
         }
         if (resolvedPath === resolvedWorkspaceRoot) {
             const commonDirs = ['Desktop', 'Documents', 'Projects', 'Development', 'Dev', 'Code', 'workspace'];
@@ -387,9 +390,10 @@ app.post('/api/create-folder', authenticateToken, async (req, res) => {
         if (!folderPath) {
             return res.status(400).json({ error: 'Path is required' });
         }
-        const expandedPath = expandWorkspacePath(folderPath);
+        const userWorkspaceRoot = await ensureUserWorkspaceRoot(req.user?.username);
+        const expandedPath = expandWorkspacePath(folderPath, userWorkspaceRoot);
         const resolvedInput = path.resolve(expandedPath);
-        const validation = await validateWorkspacePath(resolvedInput);
+        const validation = await validateWorkspacePath(resolvedInput, userWorkspaceRoot);
         if (!validation.valid) {
             return res.status(403).json({ error: validation.error });
         }
