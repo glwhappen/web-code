@@ -1,4 +1,5 @@
 import type { Project, ProjectSession, LLMProvider } from '../../../types/app';
+import type { WebSocketMessageEvent } from '../../../contexts/WebSocketContext';
 
 export type Provider = LLMProvider;
 
@@ -108,6 +109,7 @@ export interface ChatInterfaceProps {
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
   latestMessage: any;
+  messageEvents: WebSocketMessageEvent[];
   onFileOpen?: (filePath: string, diffInfo?: any) => void;
   onInputFocusChange?: (focused: boolean) => void;
   onSessionActive?: (sessionId?: string | null) => void;

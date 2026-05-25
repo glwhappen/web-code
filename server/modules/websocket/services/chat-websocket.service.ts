@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 
-import { assertUserOwnsProjectPath } from '@/modules/projects/services/project-authorization.service.js';
+import { assertUserOwnsProjectPath } from '@/modules/projects/index.js';
 import { connectedClients } from '@/modules/websocket/services/websocket-state.service.js';
 import { WebSocketWriter } from '@/modules/websocket/services/websocket-writer.service.js';
 import type {
