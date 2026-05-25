@@ -102,6 +102,22 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `;
 
+export const QUEUED_MESSAGES_TABLE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS queued_messages (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    content TEXT NOT NULL,
+    permission_mode TEXT,
+    model TEXT,
+    metadata_json TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+`;
+
 export const LAST_SCANNED_AT_SQL = `
 CREATE TABLE IF NOT EXISTS scan_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -152,6 +168,9 @@ ${SESSIONS_TABLE_SCHEMA_SQL}
 CREATE INDEX IF NOT EXISTS idx_session_ids_lookup ON sessions(session_id);
 -- NOTE: This index is created in migrations after sessions is rebuilt to include project_path.
 -- Creating it here can fail on upgraded installs where the legacy sessions table has no project_path.
+
+${QUEUED_MESSAGES_TABLE_SCHEMA_SQL}
+CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages(user_id, session_id, created_at);
 
 ${LAST_SCANNED_AT_SQL}
 

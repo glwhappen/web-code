@@ -88,6 +88,22 @@ export const api = {
     const queryString = params.toString();
     return authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/messages${queryString ? `?${queryString}` : ''}`);
   },
+  queuedMessages: (sessionId) =>
+    authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages`),
+  createQueuedMessage: (sessionId, payload) =>
+    authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateQueuedMessage: (sessionId, queueId, payload) =>
+    authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(queueId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteQueuedMessage: (sessionId, queueId) =>
+    authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(queueId)}`, {
+      method: 'DELETE',
+    }),
   renameProject: (projectId, displayName) =>
     authenticatedFetch(`/api/projects/${projectId}/rename`, {
       method: 'PUT',
