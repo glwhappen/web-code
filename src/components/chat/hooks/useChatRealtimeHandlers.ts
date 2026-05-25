@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { usePaletteOps } from '../../../contexts/PaletteOpsContext';
+import { api } from '../../../utils/api';
 import type { PendingPermissionRequest, SessionNavigationOptions } from '../types/types';
 import type { ProjectSession, LLMProvider } from '../../../types/app';
 import type { SessionStore, NormalizedMessage } from '../../../stores/useSessionStore';
@@ -304,26 +305,33 @@ export function useChatRealtimeHandlers({
 
         if (actualSessionId && sid && actualSessionId !== sid) {
           sessionStore.replaceSessionId(sid, actualSessionId);
+          void (async () => {
+            try {
+              await api.reassignQueuedMessagesSession(sid, actualSessionId);
+            } catch (error) {
+              console.error('Failed to reassign queued messages to actual session id:', error);
+            }
 
-          if (isVisibleSession) {
-            setCurrentSessionId(actualSessionId);
+            if (isVisibleSession) {
+              setCurrentSessionId(actualSessionId);
 
-            if (pendingViewSessionRef.current) {
-              const pendingSession = pendingViewSessionRef.current.sessionId;
-              if (!pendingSession || pendingSession === sid) {
-                pendingViewSessionRef.current.sessionId = actualSessionId;
+              if (pendingViewSessionRef.current) {
+                const pendingSession = pendingViewSessionRef.current.sessionId;
+                if (!pendingSession || pendingSession === sid) {
+                  pendingViewSessionRef.current.sessionId = actualSessionId;
+                }
               }
             }
-          }
 
-          if (completedSuccessfully && pendingSessionId === sid) {
-            sessionStorage.removeItem('pendingSessionId');
-          }
+            if (completedSuccessfully && pendingSessionId === sid) {
+              sessionStorage.removeItem('pendingSessionId');
+            }
 
-          if (isVisibleSession) {
-            onNavigateToSession?.(actualSessionId, { replace: true });
-            setTimeout(() => { void paletteOps.refreshProjects(); }, 500);
-          }
+            if (isVisibleSession) {
+              onNavigateToSession?.(actualSessionId, { replace: true });
+              setTimeout(() => { void paletteOps.refreshProjects(); }, 500);
+            }
+          })();
           break;
         }
 

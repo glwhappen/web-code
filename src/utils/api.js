@@ -104,6 +104,11 @@ export const api = {
     authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages/${encodeURIComponent(queueId)}`, {
       method: 'DELETE',
     }),
+  reassignQueuedMessagesSession: (sessionId, targetSessionId) =>
+    authenticatedFetch(`/api/providers/sessions/${encodeURIComponent(sessionId)}/queued-messages/reassign`, {
+      method: 'POST',
+      body: JSON.stringify({ targetSessionId }),
+    }),
   renameProject: (projectId, displayName) =>
     authenticatedFetch(`/api/projects/${projectId}/rename`, {
       method: 'PUT',

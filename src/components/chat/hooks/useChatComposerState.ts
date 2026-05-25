@@ -16,6 +16,7 @@ import { thinkingModes } from '../constants/thinkingModes';
 import { grantClaudeToolPermission } from '../utils/chatPermissions';
 import { safeLocalStorage } from '../utils/chatStorage';
 import type {
+  ChatImage,
   ChatMessage,
   PendingPermissionRequest,
   PermissionMode,
@@ -62,6 +63,7 @@ interface UseChatComposerStateArgs {
   setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
   setIsUserScrolledUp: (isScrolledUp: boolean) => void;
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
+  activeSessionIsProcessing?: boolean;
 }
 
 interface MentionableFile {
@@ -85,6 +87,10 @@ export interface QueuedChatMessage {
   content: string;
   permissionMode: string | null;
   model: string | null;
+  metadata?: {
+    images?: ChatImage[];
+    [key: string]: unknown;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -147,6 +153,7 @@ export function useChatComposerState({
   setClaudeStatus,
   setIsUserScrolledUp,
   setPendingPermissionRequests,
+  activeSessionIsProcessing = false,
 }: UseChatComposerStateArgs) {
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && selectedProject) {
@@ -170,7 +177,9 @@ export function useChatComposerState({
     ((event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>) => Promise<void>) | null
   >(null);
   const inputValueRef = useRef(input);
+  const isLoadingRef = useRef(isLoading);
   const autoSendingQueuedMessageRef = useRef(false);
+  const queueProcessingRef = useRef(false);
   const selectedProjectId = selectedProject?.projectId;
   const activeQueueSessionId = currentSessionId || selectedSession?.id || null;
 
@@ -506,7 +515,10 @@ export function useChatComposerState({
     }
   }, []);
 
-  const enqueueQueuedMessage = useCallback(async (content: string) => {
+  const enqueueQueuedMessage = useCallback(async (
+    content: string,
+    metadata?: Record<string, unknown>,
+  ) => {
     if (!activeQueueSessionId) {
       return false;
     }
@@ -517,6 +529,7 @@ export function useChatComposerState({
         provider,
         permissionMode,
         model: getCurrentModel(),
+        metadata,
       });
       if (!response.ok) {
         throw new Error(`Failed to queue message (${response.status})`);
@@ -583,59 +596,89 @@ export function useChatComposerState({
     }
   }, [activeQueueSessionId]);
 
-  const handleSubmit = useCallback(
+  const resetComposerAfterHandledInput = useCallback(() => {
+    setInput('');
+    inputValueRef.current = '';
+    resetCommandMenuState();
+    setAttachedImages([]);
+    setUploadingImages(new Map());
+    setImageErrors(new Map());
+    setIsTextareaExpanded(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+    if (selectedProject) {
+      safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
+    }
+  }, [resetCommandMenuState, selectedProject]);
+
+  const uploadImages = useCallback(async (files: File[]): Promise<ChatImage[] | null> => {
+    if (!selectedProject || files.length === 0) {
+      return [];
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
+
+    try {
+      const response = await authenticatedFetch(`/api/projects/${selectedProject.projectId}/upload-images`, {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload images');
+      }
+
+      const result = await response.json();
+      return Array.isArray(result.images) ? (result.images as ChatImage[]) : [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Image upload failed:', error);
+      addMessage({
+        type: 'error',
+        content: `Failed to upload images: ${message}`,
+        timestamp: new Date(),
+      });
+      return null;
+    }
+  }, [addMessage, selectedProject]);
+
+  const extractQueuedImages = useCallback((message: QueuedChatMessage): ChatImage[] => {
+    const images = message.metadata?.images;
+    if (!Array.isArray(images)) {
+      return [];
+    }
+    return images.filter(
+      (image): image is ChatImage =>
+        Boolean(
+          image
+          && typeof image === 'object'
+          && typeof (image as ChatImage).data === 'string'
+          && typeof (image as ChatImage).name === 'string',
+        ),
+    );
+  }, []);
+
+  const submitDirectMessage = useCallback(
     async (
-      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
-    ) => {
-      event.preventDefault();
-      const currentInput = inputValueRef.current;
-      if (!currentInput.trim() || !selectedProject) {
-        return;
+      currentInput: string,
+      options?: {
+        images?: ChatImage[];
+        clearComposer?: boolean;
+      },
+    ): Promise<boolean> => {
+      if (!selectedProject) {
+        return false;
       }
 
-      if (isLoading) {
-        if (attachedImages.length > 0) {
-          window.alert('Image attachments cannot be queued yet.');
-          return;
-        }
-        const queued = await enqueueQueuedMessage(currentInput);
-        if (!queued) {
-          return;
-        }
-        setInput('');
-        inputValueRef.current = '';
-        resetCommandMenuState();
-        setAttachedImages([]);
-        setUploadingImages(new Map());
-        setImageErrors(new Map());
-        setIsTextareaExpanded(false);
-        if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-        }
-        safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
-        return;
-      }
-
-      // Intercept slash commands only when "/" is the first input character.
-      const commandInput = currentInput.trimEnd();
-      if (commandInput.startsWith('/')) {
-        const firstSpace = commandInput.indexOf(' ');
-        const commandName = firstSpace > 0 ? commandInput.slice(0, firstSpace) : commandInput;
-        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
-        if (matchedCommand && matchedCommand.type !== 'skill') {
-          executeCommand(matchedCommand, commandInput);
-          setInput('');
-          inputValueRef.current = '';
-          setAttachedImages([]);
-          setUploadingImages(new Map());
-          setImageErrors(new Map());
-          resetCommandMenuState();
-          setIsTextareaExpanded(false);
-          if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-          }
-          return;
-        }
+      const shouldClearComposer = options?.clearComposer ?? true;
+      const uploadedImages = options?.images ?? (await uploadImages(attachedImages));
+      if (uploadedImages === null) {
+        return false;
       }
 
       let messageContent = currentInput;
@@ -644,45 +687,13 @@ export function useChatComposerState({
         messageContent = `${selectedThinkingMode.prefix}: ${currentInput}`;
       }
 
-      let uploadedImages: unknown[] = [];
-      if (attachedImages.length > 0) {
-        const formData = new FormData();
-        attachedImages.forEach((file) => {
-          formData.append('images', file);
-        });
-
-        try {
-          const response = await authenticatedFetch(`/api/projects/${selectedProject.projectId}/upload-images`, {
-            method: 'POST',
-            headers: {},
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to upload images');
-          }
-
-          const result = await response.json();
-          uploadedImages = result.images;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Image upload failed:', error);
-          addMessage({
-            type: 'error',
-            content: `Failed to upload images: ${message}`,
-            timestamp: new Date(),
-          });
-          return;
-        }
-      }
-
       const effectiveSessionId =
         currentSessionId || selectedSession?.id || sessionStorage.getItem('cursorSessionId');
 
       const userMessage: ChatMessage = {
         type: 'user',
         content: currentInput,
-        images: uploadedImages as any,
+        images: uploadedImages,
         timestamp: new Date(),
       };
 
@@ -806,48 +817,113 @@ export function useChatComposerState({
         });
       }
 
-      setInput('');
-      inputValueRef.current = '';
-      resetCommandMenuState();
-      setAttachedImages([]);
-      setUploadingImages(new Map());
-      setImageErrors(new Map());
-      setIsTextareaExpanded(false);
-      setThinkingMode('none');
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+      if (shouldClearComposer) {
+        resetComposerAfterHandledInput();
+        setThinkingMode('none');
       }
 
-      safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
+      return true;
     },
     [
-      selectedSession,
+      addMessage,
       attachedImages,
       claudeModel,
       codexModel,
       currentSessionId,
       cursorModel,
-      enqueueQueuedMessage,
-      executeCommand,
       geminiModel,
-      isLoading,
       onSessionActive,
       onSessionProcessing,
       pendingViewSessionRef,
       permissionMode,
       provider,
-      resetCommandMenuState,
+      resetComposerAfterHandledInput,
       scrollToBottom,
       selectedProject,
+      selectedSession,
       sendMessage,
       setCanAbortSession,
-      addMessage,
       setClaudeStatus,
       setIsLoading,
       setIsUserScrolledUp,
-      slashCommands,
       thinkingMode,
+      uploadImages,
+    ],
+  );
+
+  const handleSubmit = useCallback(
+    async (
+      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
+    ) => {
+      event.preventDefault();
+      const currentInput = inputValueRef.current;
+      if (!currentInput.trim() || !selectedProject) {
+        return;
+      }
+
+      // Intercept slash commands only when "/" is the first input character.
+      const commandInput = currentInput.trimEnd();
+      if (commandInput.startsWith('/')) {
+        const firstSpace = commandInput.indexOf(' ');
+        const commandName = firstSpace > 0 ? commandInput.slice(0, firstSpace) : commandInput;
+        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
+        if (matchedCommand && matchedCommand.type !== 'skill') {
+          executeCommand(matchedCommand, commandInput);
+          resetComposerAfterHandledInput();
+          return;
+        }
+      }
+
+      const shouldQueue =
+        isLoadingRef.current
+        || activeSessionIsProcessing
+        || autoSendingQueuedMessageRef.current
+        || queueProcessingRef.current;
+      if (shouldQueue) {
+        if (!activeQueueSessionId) {
+          addMessage({
+            type: 'error',
+            content: 'Session is still initializing. Please try again in a moment.',
+            timestamp: new Date(),
+          });
+          return;
+        }
+
+        const uploadedImages = await uploadImages(attachedImages);
+        if (uploadedImages === null) {
+          return;
+        }
+
+        const queued = await enqueueQueuedMessage(
+          currentInput,
+          uploadedImages.length > 0 ? { images: uploadedImages } : undefined,
+        );
+        if (!queued) {
+          addMessage({
+            type: 'error',
+            content: 'Failed to queue message. Please try again.',
+            timestamp: new Date(),
+          });
+          return;
+        }
+        resetComposerAfterHandledInput();
+        return;
+      }
+
+      await submitDirectMessage(currentInput);
+    },
+    [
+      activeQueueSessionId,
+      activeSessionIsProcessing,
+      addMessage,
+      attachedImages,
+      enqueueQueuedMessage,
+      executeCommand,
+      resetComposerAfterHandledInput,
+      selectedProject,
+      slashCommands,
+      submitDirectMessage,
+      uploadImages,
     ],
   );
 
@@ -865,28 +941,59 @@ export function useChatComposerState({
   }, [activeQueueSessionId, refreshQueuedMessages]);
 
   useEffect(() => {
-    if (isLoading || !activeQueueSessionId || queuedMessages.length === 0 || autoSendingQueuedMessageRef.current) {
+    if (
+      isLoading
+      || activeSessionIsProcessing
+      || !activeQueueSessionId
+      || queuedMessages.length === 0
+      || autoSendingQueuedMessageRef.current
+      || queueProcessingRef.current
+    ) {
       return;
     }
 
     const nextMessage = queuedMessages[0];
     autoSendingQueuedMessageRef.current = true;
+    queueProcessingRef.current = true;
 
     void (async () => {
       const deleted = await deleteQueuedMessage(nextMessage.id);
       if (!deleted) {
         autoSendingQueuedMessageRef.current = false;
+        queueProcessingRef.current = false;
         return;
       }
 
-      inputValueRef.current = nextMessage.content;
-      setInput(nextMessage.content);
-      await handleSubmitRef.current?.(createFakeSubmitEvent());
+      const queuedImages = extractQueuedImages(nextMessage);
+      const submitted = await submitDirectMessage(nextMessage.content, {
+        images: queuedImages,
+        clearComposer: false,
+      });
+      if (!submitted) {
+        await enqueueQueuedMessage(
+          nextMessage.content,
+          queuedImages.length > 0 ? { images: queuedImages } : undefined,
+        );
+      }
       window.setTimeout(() => {
         autoSendingQueuedMessageRef.current = false;
+        queueProcessingRef.current = false;
       }, 250);
     })();
-  }, [activeQueueSessionId, deleteQueuedMessage, isLoading, queuedMessages]);
+  }, [
+    activeQueueSessionId,
+    activeSessionIsProcessing,
+    deleteQueuedMessage,
+    enqueueQueuedMessage,
+    extractQueuedImages,
+    queuedMessages,
+    submitDirectMessage,
+    isLoading,
+  ]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   useEffect(() => {
     inputValueRef.current = input;
