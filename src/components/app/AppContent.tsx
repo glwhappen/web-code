@@ -123,18 +123,49 @@ function AppContentInner() {
   // the keyboard overlays it — we use the Visual Viewport API to track keyboard height
   // and apply it as a CSS variable that shifts the container's bottom edge up.
   useEffect(() => {
+    const isIosLikePlatform = (() => {
+      const ua = navigator.userAgent || '';
+      const platform = navigator.platform || '';
+      const touchPoints = navigator.maxTouchPoints || 0;
+      return /iPad|iPhone|iPod/.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+    })();
+    if (!isIosLikePlatform) return;
+
     const vv = window.visualViewport;
     if (!vv) return;
+
+    const isEditableElement = (el: Element | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (el.isContentEditable) return true;
+      if (el instanceof HTMLTextAreaElement) return true;
+      if (!(el instanceof HTMLInputElement)) return false;
+      const type = (el.type || 'text').toLowerCase();
+      return !['button', 'checkbox', 'radio', 'range', 'file', 'color', 'submit', 'reset', 'image'].includes(type);
+    };
+
     const update = () => {
       // Only resize matters — keyboard open/close changes vv.height.
       // Do NOT listen to scroll: on iOS Safari, scrolling content changes
       // vv.offsetTop which would make --keyboard-height fluctuate during
       // normal scrolling, causing the container to bounce up and down.
-      const kb = Math.max(0, window.innerHeight - vv.height);
+      const focusedEditable = isEditableElement(document.activeElement);
+      const rawKeyboardHeight = Math.max(0, window.innerHeight - vv.height);
+      // Ignore tiny viewport shifts (toolbar dynamics), and only apply while editing.
+      const kb = focusedEditable && rawKeyboardHeight > 80 ? rawKeyboardHeight : 0;
       document.documentElement.style.setProperty('--keyboard-height', `${kb}px`);
     };
+
+    update();
     vv.addEventListener('resize', update);
-    return () => vv.removeEventListener('resize', update);
+    window.addEventListener('focusin', update);
+    window.addEventListener('focusout', update);
+
+    return () => {
+      vv.removeEventListener('resize', update);
+      window.removeEventListener('focusin', update);
+      window.removeEventListener('focusout', update);
+      document.documentElement.style.setProperty('--keyboard-height', '0px');
+    };
   }, []);
 
   return (
