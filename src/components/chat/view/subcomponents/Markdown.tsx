@@ -118,6 +118,14 @@ const CodeBlock = ({ node, inline, className, children, ...props }: CodeBlockPro
 
 const markdownComponents = {
   code: CodeBlock,
+  img: ({ src, alt }: { src?: string; alt?: string }) => (
+    <img
+      src={src}
+      alt={alt || ''}
+      className="my-2 max-h-[520px] max-w-full rounded-lg object-contain"
+      loading="lazy"
+    />
+  ),
   blockquote: ({ children }: { children?: React.ReactNode }) => (
     <blockquote className="my-2 border-l-4 border-gray-300 pl-4 italic text-gray-600 dark:border-gray-600 dark:text-gray-400">
       {children}
@@ -143,8 +151,22 @@ const markdownComponents = {
   ),
 };
 
+function normalizeStandaloneImageUrls(text: string) {
+  const imageUrlPattern = /^(?:https?:\/\/|\/)\S+\.(?:png|jpe?g|gif|webp|svg)(?:\?\S*)?$/i;
+  return text
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('![') || !imageUrlPattern.test(trimmed)) {
+        return line;
+      }
+      return `${line.slice(0, line.indexOf(trimmed))}![](${trimmed})`;
+    })
+    .join('\n');
+}
+
 export function Markdown({ children, className }: MarkdownProps) {
-  const content = normalizeInlineCodeFences(String(children ?? ''));
+  const content = normalizeStandaloneImageUrls(normalizeInlineCodeFences(String(children ?? '')));
   const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
   const rehypePlugins = useMemo(() => [rehypeKatex], []);
 

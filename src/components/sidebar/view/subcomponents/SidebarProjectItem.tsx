@@ -462,7 +462,7 @@ export default function SidebarProjectItem({
       {isProjectMenuOpen && !isEditing && (
         <div
           data-project-actions-menu={project.projectId}
-          className="fixed z-50 w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+          className="fixed z-[70] w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
           style={{ top: `${projectMenuPosition.top}px`, left: `${projectMenuPosition.left}px` }}
         >
           <button
