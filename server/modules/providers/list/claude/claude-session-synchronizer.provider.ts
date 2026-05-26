@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
-import { sessionsDb } from '@/modules/database/index.js';
+import { projectsDb, sessionsDb } from '@/modules/database/index.js';
 import {
   buildLookupMap,
   extractFirstValidJsonlData,
@@ -43,6 +43,10 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
         continue;
       }
 
+      if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
+        continue;
+      }
+
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
         ownerUserId,
@@ -71,6 +75,10 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     const nameMap = await buildLookupMap(path.join(this.claudeHome, 'history.jsonl'), 'sessionId', 'display');
     const parsed = await this.processSessionFile(ownerUserId, filePath, nameMap);
     if (!parsed) {
+      return null;
+    }
+
+    if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
       return null;
     }
 
