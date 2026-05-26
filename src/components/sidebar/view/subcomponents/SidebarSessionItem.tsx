@@ -143,8 +143,6 @@ export default function SidebarSessionItem({
     const touch = event.touches[0];
     longPressTimerRef.current = setTimeout(() => {
       suppressNextTapRef.current = true;
-      onProjectSelect(project);
-      onSessionSelect(session, project.projectId);
       openSessionActionsMenu(touch.clientX, touch.clientY);
     }, 450);
   };
@@ -247,8 +245,6 @@ export default function SidebarSessionItem({
               className="ml-1 flex h-5 w-5 items-center justify-center rounded-md bg-muted/50 text-muted-foreground transition-transform active:scale-95"
               onClick={(event) => {
                 event.stopPropagation();
-                onProjectSelect(project);
-                onSessionSelect(session, project.projectId);
                 const target = event.currentTarget.getBoundingClientRect();
                 openSessionActionsMenu(target.right - 8, target.bottom + 4);
               }}
@@ -354,39 +350,40 @@ export default function SidebarSessionItem({
               </>
             )}
           </div>
-        {isSessionMenuOpen && !isSessionBeingEdited && (
-          <div
-            data-session-actions-menu={session.id}
-            className="fixed z-50 w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
-            style={{ top: `${sessionMenuPosition.top}px`, left: `${sessionMenuPosition.left}px` }}
+      </div>
+
+      {isSessionMenuOpen && !isSessionBeingEdited && (
+        <div
+          data-session-actions-menu={session.id}
+          className="fixed z-[70] w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+          style={{ top: `${sessionMenuPosition.top}px`, left: `${sessionMenuPosition.left}px` }}
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+            onClick={() => {
+              closeSessionActionsMenu();
+              onStartEditingSession(session.id, sessionView.sessionName);
+            }}
           >
+            <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+            {t('sessions.renameSession')}
+          </button>
+          {!sessionView.isCursorSession && (
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               onClick={() => {
                 closeSessionActionsMenu();
-                onStartEditingSession(session.id, sessionView.sessionName);
+                requestDeleteSession();
               }}
             >
-              <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-              {t('sessions.renameSession')}
+              <Trash2 className="h-3.5 w-3.5" />
+              {t('sessions.deleteSession')}
             </button>
-            {!sessionView.isCursorSession && (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                onClick={() => {
-                  closeSessionActionsMenu();
-                  requestDeleteSession();
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('sessions.deleteSession')}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
