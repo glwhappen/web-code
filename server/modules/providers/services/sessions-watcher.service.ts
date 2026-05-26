@@ -8,22 +8,22 @@ import { sessionSynchronizerService } from '@/modules/providers/services/session
 import { WS_OPEN_STATE, connectedClients } from '@/modules/websocket/index.js';
 import type { LLMProvider } from '@/shared/types.js';
 import { getProjectsWithSessions } from '@/modules/projects/index.js';
-import { getDefaultOwnerUserId } from '@/shared/default-user.js';
+import { userDb } from '@/modules/database/index.js';
 import { AppError } from '@/shared/utils.js';
 
 /**
- * Resolves the user id used to attribute background-watcher synchronizations.
+ * Resolves active app users that should receive background synchronizations.
  *
- * Returns `null` (with a console warning) when no user has registered yet so
+ * Returns an empty list (with a console warning) when no user has registered yet so
  * that the watcher can keep running silently until the first account exists.
  */
-function resolveWatcherOwnerUserId(): number | null {
+function resolveWatcherOwnerUserIds(): number[] {
   try {
-    return getDefaultOwnerUserId();
+    return userDb.listUsers().map((user) => Number(user.id)).filter((id) => Number.isFinite(id));
   } catch (error) {
     if (error instanceof AppError && error.code === 'DEFAULT_USER_NOT_AVAILABLE') {
       console.warn('Session watcher skipping synchronization: no registered user yet');
-      return null;
+      return [];
     }
     throw error;
   }
@@ -161,33 +161,38 @@ async function flushPendingWatcherUpdate(): Promise<void> {
   watcherRefreshInFlight = true;
 
   try {
-    const ownerUserId = resolveWatcherOwnerUserId();
-    const updatedProjects = ownerUserId !== null
-      ? await getProjectsWithSessions(ownerUserId, { skipSynchronization: true })
-      : [];
     const changeTypes = Array.from(queuedUpdate.changeTypes);
     const watchProviders = Array.from(queuedUpdate.providers);
     const updatedSessionIds = Array.from(queuedUpdate.updatedSessionIds);
+    const targetUserIds = Array.from(
+      new Set(
+        Array.from(connectedClients)
+          .map((client) => Number(client.userId))
+          .filter((userId) => Number.isFinite(userId)),
+      ),
+    );
 
-    // Backward-compatible fields stay populated with the first queued values.
-    const updateMessage = JSON.stringify({
-      type: 'projects_updated',
-      projects: updatedProjects,
-      timestamp: new Date().toISOString(),
-      changeType: changeTypes[0] ?? 'change',
-      updatedSessionId: updatedSessionIds[0] ?? undefined,
-      watchProvider: watchProviders[0] ?? undefined,
-      changeTypes,
-      updatedSessionIds,
-      watchProviders,
-      batched: true,
-    });
+    await Promise.all(targetUserIds.map(async (userId) => {
+      const updatedProjects = await getProjectsWithSessions(userId, { skipSynchronization: true });
+      const updateMessage = JSON.stringify({
+        type: 'projects_updated',
+        projects: updatedProjects,
+        timestamp: new Date().toISOString(),
+        changeType: changeTypes[0] ?? 'change',
+        updatedSessionId: updatedSessionIds[0] ?? undefined,
+        watchProvider: watchProviders[0] ?? undefined,
+        changeTypes,
+        updatedSessionIds,
+        watchProviders,
+        batched: true,
+      });
 
-    connectedClients.forEach(client => {
-      if (client.readyState === WS_OPEN_STATE) {
-        client.send(updateMessage);
-      }
-    });
+      connectedClients.forEach((client) => {
+        if (client.readyState === WS_OPEN_STATE && Number(client.userId) === userId) {
+          client.send(updateMessage);
+        }
+      });
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('Session watcher refresh failed while broadcasting projects_updated', { error: message });
@@ -214,21 +219,28 @@ async function onUpdate(
   }
 
   try {
-    const ownerUserId = resolveWatcherOwnerUserId();
-    if (ownerUserId === null) {
+    const ownerUserIds = resolveWatcherOwnerUserIds();
+    if (ownerUserIds.length === 0) {
       return;
     }
 
-    const result = await sessionSynchronizerService.synchronizeProviderFile(ownerUserId, provider, filePath);
-    if (!result.indexed) {
+    const results = await Promise.all(
+      ownerUserIds.map((ownerUserId) =>
+        sessionSynchronizerService.synchronizeProviderFile(ownerUserId, provider, filePath),
+      ),
+    );
+    const indexedResults = results.filter((result) => result.indexed);
+    if (indexedResults.length === 0) {
       return;
     }
 
     console.log(`Session synchronization triggered by ${eventType} event for provider "${provider}"`, {
       filePath,
-      sessionId: result.sessionId,
+      sessionIds: indexedResults.map((result) => result.sessionId).filter(Boolean),
     });
-    queuePendingWatcherUpdate(eventType, provider, result.sessionId);
+    indexedResults.forEach((result) => {
+      queuePendingWatcherUpdate(eventType, provider, result.sessionId);
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Session watcher sync failed for provider "${provider}"`, {
@@ -245,12 +257,20 @@ async function onUpdate(
 export async function initializeSessionsWatcher(): Promise<void> {
   console.log('Setting up session watchers');
 
-  const initialOwnerUserId = resolveWatcherOwnerUserId();
-  if (initialOwnerUserId !== null) {
-    const initialSync = await sessionSynchronizerService.synchronizeSessions(initialOwnerUserId);
+  const initialOwnerUserIds = resolveWatcherOwnerUserIds();
+  if (initialOwnerUserIds.length > 0) {
+    const initialSyncResults = await Promise.all(
+      initialOwnerUserIds.map(async (ownerUserId) => ({
+        userId: ownerUserId,
+        result: await sessionSynchronizerService.synchronizeSessions(ownerUserId),
+      })),
+    );
     console.log('Initial session synchronization complete', {
-      processedByProvider: initialSync.processedByProvider,
-      failures: initialSync.failures,
+      users: initialSyncResults.map(({ userId, result }) => ({
+        userId,
+        processedByProvider: result.processedByProvider,
+        failures: result.failures,
+      })),
     });
   } else {
     console.log('Initial session synchronization skipped: no registered user yet');

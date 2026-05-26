@@ -1,11 +1,10 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 
-import { sessionsDb } from '@/modules/database/index.js';
+import { projectsDb, sessionsDb } from '@/modules/database/index.js';
 import {
   extractFirstValidJsonlData,
   findFilesRecursivelyCreatedAfter,
@@ -56,6 +55,10 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
         continue;
       }
 
+      if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
+        continue;
+      }
+
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
         ownerUserId,
@@ -83,6 +86,10 @@ export class CursorSessionSynchronizer implements IProviderSessionSynchronizer {
 
     const parsed = await this.processSessionFile(filePath);
     if (!parsed) {
+      return null;
+    }
+
+    if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
       return null;
     }
 
