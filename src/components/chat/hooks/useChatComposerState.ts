@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -97,6 +97,43 @@ export interface QueuedChatMessage {
 
 const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
+};
+
+const waitForNextPaint = () =>
+  new Promise<void>((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+    window.requestAnimationFrame(() => resolve());
+  });
+
+const scheduleOptimisticSendUi = ({
+  addMessage,
+  setIsLoading,
+  setCanAbortSession,
+  setClaudeStatus,
+  setIsUserScrolledUp,
+  userMessage,
+}: {
+  addMessage: (msg: ChatMessage) => void;
+  setIsLoading: (loading: boolean) => void;
+  setCanAbortSession: (canAbort: boolean) => void;
+  setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
+  setIsUserScrolledUp: (isScrolledUp: boolean) => void;
+  userMessage: ChatMessage;
+}) => {
+  startTransition(() => {
+    addMessage(userMessage);
+    setIsLoading(true);
+    setCanAbortSession(true);
+    setClaudeStatus({
+      text: 'Processing',
+      tokens: 0,
+      can_interrupt: true,
+    });
+    setIsUserScrolledUp(false);
+  });
 };
 
 const readApiData = async <T,>(response: Response): Promise<T> => {
@@ -410,6 +447,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     setCursorPosition,
     handleFileMentionsKeyDown,
   } = useFileMentions({
@@ -736,18 +774,6 @@ export function useChatComposerState({
         timestamp: new Date(),
       };
 
-      addMessage(userMessage);
-      setIsLoading(true); // Processing banner starts
-      setCanAbortSession(true);
-      setClaudeStatus({
-        text: 'Processing',
-        tokens: 0,
-        can_interrupt: true,
-      });
-
-      setIsUserScrolledUp(false);
-      setTimeout(() => scrollToBottom(), 100);
-
       if (!effectiveSessionId && !selectedSession?.id) {
         if (typeof window !== 'undefined') {
           // Reset stale pending IDs from previous interrupted runs before creating a new one.
@@ -760,6 +786,18 @@ export function useChatComposerState({
       if (effectiveSessionId) {
         onSessionActive?.(effectiveSessionId);
         onSessionProcessing?.(effectiveSessionId);
+      }
+
+      if (!shouldClearComposer) {
+        scheduleOptimisticSendUi({
+          addMessage,
+          setIsLoading,
+          setCanAbortSession,
+          setClaudeStatus,
+          setIsUserScrolledUp,
+          userMessage,
+        });
+        window.setTimeout(() => scrollToBottom(), 0);
       }
 
       const getToolsSettings = () => {
@@ -859,6 +897,17 @@ export function useChatComposerState({
       if (shouldClearComposer) {
         resetComposerAfterHandledInput();
         setThinkingMode('none');
+        // Let the input clear paint before the heavier chat-list updates kick in.
+        await waitForNextPaint();
+        scheduleOptimisticSendUi({
+          addMessage,
+          setIsLoading,
+          setCanAbortSession,
+          setClaudeStatus,
+          setIsUserScrolledUp,
+          userMessage,
+        });
+        window.setTimeout(() => scrollToBottom(), 0);
       }
 
       return true;
@@ -1329,6 +1378,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     attachedImages,
     setAttachedImages,
     uploadingImages,

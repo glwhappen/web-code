@@ -190,7 +190,7 @@ export function useFileTreeOperations({
   const handleStartCreate = useCallback((parentPath: string, type: 'file' | 'directory') => {
     setNewItemParent(parentPath || '');
     setNewItemType(type);
-    setNewItemName(type === 'file' ? 'untitled.txt' : 'new-folder');
+    setNewItemName(type === 'file' ? '未命名.txt' : '新建文件夹');
     setIsCreating(true);
     setRenamingItem(null);
   }, []);
