@@ -215,11 +215,13 @@
     "description": "配置您的 git 提交身份。这些设置将通过 git config --global 全局应用",
     "name": {
       "label": "Git 名称",
-      "help": "您的 git 提交名称"
+      "help": "您的 git 提交名称",
+      "placeholder": "例如：张三"
     },
     "email": {
       "label": "Git 邮箱",
-      "help": "您的 git 提交邮箱"
+      "help": "您的 git 提交邮箱",
+      "placeholder": "例如：name@example.com"
     },
     "actions": {
       "save": "保存配置",
