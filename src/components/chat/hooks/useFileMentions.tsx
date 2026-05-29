@@ -215,6 +215,13 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     [input, atSymbolPosition, textareaRef, setInput],
   );
 
+  const resetFileMentionState = useCallback(() => {
+    setShowFileDropdown(false);
+    setFilteredFiles([]);
+    setSelectedFileIndex(-1);
+    setAtSymbolPosition(-1);
+  }, []);
+
   const handleFileMentionsKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (!showFileDropdown || filteredFiles.length === 0) {
@@ -249,13 +256,13 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        setShowFileDropdown(false);
+        resetFileMentionState();
         return true;
       }
 
       return false;
     },
-    [showFileDropdown, filteredFiles, selectedFileIndex, selectFile],
+    [showFileDropdown, filteredFiles, selectedFileIndex, selectFile, resetFileMentionState],
   );
 
   return {
@@ -264,6 +271,7 @@ export function useFileMentions({ selectedProject, input, setInput, textareaRef 
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     setCursorPosition,
     handleFileMentionsKeyDown,
   };

@@ -1,5 +1,7 @@
 import { ArrowDownIcon, ImageIcon, MessageSquareIcon, PencilIcon, SaveIcon, Trash2Icon, XIcon } from 'lucide-react';
 import {
+  useEffect,
+  useRef,
   useState,
   type ChangeEvent,
   type ClipboardEvent,
@@ -82,6 +84,7 @@ interface ChatComposerProps {
   filteredFiles: MentionableFile[];
   selectedFileIndex: number;
   onSelectFile: (file: MentionableFile) => void;
+  onCloseFileDropdown: () => void;
   filteredCommands: SlashCommand[];
   selectedCommandIndex: number;
   onCommandSelect: (command: SlashCommand, index: number, isHover: boolean) => void;
@@ -141,6 +144,7 @@ export default function ChatComposer({
   filteredFiles,
   selectedFileIndex,
   onSelectFile,
+  onCloseFileDropdown,
   filteredCommands,
   selectedCommandIndex,
   onCommandSelect,
@@ -172,6 +176,8 @@ export default function ChatComposer({
   const { t } = useTranslation('chat');
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
   const [editingQueueContent, setEditingQueueContent] = useState('');
+  const composerContainerRef = useRef<HTMLDivElement>(null);
+  const fileDropdownRef = useRef<HTMLDivElement>(null);
   const textareaRect = textareaRef.current?.getBoundingClientRect();
   const commandMenuPosition = {
     top: textareaRect ? Math.max(16, textareaRect.top - 316) : 0,
@@ -186,6 +192,56 @@ export default function ChatComposer({
 
   // Hide the thinking/status bar while any permission request is pending
   const hasPendingPermissions = pendingPermissionRequests.length > 0;
+
+  useEffect(() => {
+    if (!showFileDropdown && !isCommandMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      const clickedInsideComposer = composerContainerRef.current?.contains(target) ?? false;
+      if (!clickedInsideComposer) {
+        onCloseCommandMenu();
+        onCloseFileDropdown();
+        return;
+      }
+
+      const clickedTextarea = textareaRef.current?.contains(target) ?? false;
+      const clickedFileDropdown = fileDropdownRef.current?.contains(target) ?? false;
+      const clickedCommandMenu =
+        target instanceof Element ? Boolean(target.closest('.command-menu')) : false;
+
+      if (showFileDropdown && !clickedTextarea && !clickedFileDropdown) {
+        onCloseFileDropdown();
+      }
+
+      if (isCommandMenuOpen && !clickedCommandMenu) {
+        onCloseCommandMenu();
+      }
+    };
+
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      onCloseCommandMenu();
+      onCloseFileDropdown();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isCommandMenuOpen, onCloseCommandMenu, onCloseFileDropdown, showFileDropdown, textareaRef]);
 
   const startEditingQueueMessage = (message: QueuedChatMessage) => {
     setEditingQueueId(message.id);
@@ -222,7 +278,7 @@ export default function ChatComposer({
         </div>
       )}
 
-      {!hasQuestionPanel && <div className="relative mx-auto max-w-4xl">
+      {!hasQuestionPanel && <div ref={composerContainerRef} className="relative mx-auto max-w-4xl">
         {(queuedMessages.length > 0 || isLoadingQueuedMessages) && (
           <div className="mb-2 rounded-lg border border-border/50 bg-card/80 text-sm shadow-sm backdrop-blur-sm">
             <div className="flex items-center justify-between border-b border-border/30 px-3 py-2">
@@ -299,7 +355,10 @@ export default function ChatComposer({
           </div>
         )}
         {showFileDropdown && filteredFiles.length > 0 && (
-          <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-xl border border-border/50 bg-card/95 shadow-lg backdrop-blur-md">
+          <div
+            ref={fileDropdownRef}
+            className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-48 overflow-y-auto rounded-xl border border-border/50 bg-card/95 shadow-lg backdrop-blur-md"
+          >
             {filteredFiles.map((file, index) => (
               <div
                 key={file.path}
