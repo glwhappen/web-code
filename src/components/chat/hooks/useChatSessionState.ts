@@ -11,6 +11,7 @@ import { normalizedToChatMessages } from './useChatMessages';
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
+const SESSION_MESSAGES_TIMEOUT_MS = 15000;
 
 type PendingViewSession = {
   sessionId: string | null;
@@ -132,6 +133,7 @@ export function useChatSessionState({
   const pendingInitialScrollRef = useRef(true);
   const messagesOffsetRef = useRef(0);
   const scrollPositionRef = useRef({ height: 0, top: 0 });
+  const wasNearBottomRef = useRef(true);
   const loadAllFinishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAllOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedSessionKeyRef = useRef<string | null>(null);
@@ -321,6 +323,7 @@ export function useChatSessionState({
       const sessionProvider = selectedSession.__provider || 'claude';
 
       isLoadingMoreRef.current = true;
+      setIsLoadingMoreMessages(true);
       const previousScrollHeight = container.scrollHeight;
       const previousScrollTop = container.scrollTop;
 
@@ -341,6 +344,7 @@ export function useChatSessionState({
         return true;
       } finally {
         isLoadingMoreRef.current = false;
+        setIsLoadingMoreMessages(false);
       }
     },
     [hasMoreMessages, isLoadingMoreMessages, selectedProject, selectedSession, sessionStore],
@@ -466,6 +470,7 @@ export function useChatSessionState({
       projectPath: selectedProject.fullPath || selectedProject.path || '',
       limit: MESSAGES_PER_PAGE,
       offset: 0,
+      timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
     }).then(slot => {
       if (slot) {
         setHasMoreMessages(slot.hasMore);
@@ -559,6 +564,7 @@ export function useChatSessionState({
               projectPath: selectedProject.fullPath || selectedProject.path || '',
               limit: null,
               offset: 0,
+              timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
             });
             if (slot) {
               setHasMoreMessages(false);
@@ -668,7 +674,9 @@ export function useChatSessionState({
     if (searchScrollActiveRef.current) return;
 
     if (autoScrollToBottom) {
-      if (!isUserScrolledUp) setTimeout(() => scrollToBottom(), 50);
+      if (wasNearBottomRef.current || !isUserScrolledUp) {
+        setTimeout(() => scrollToBottom(), 50);
+      }
       return;
     }
 
@@ -679,6 +687,10 @@ export function useChatSessionState({
     const heightDiff = newHeight - prevHeight;
     if (heightDiff > 0 && prevTop > 0) container.scrollTop = prevTop + heightDiff;
   }, [autoScrollToBottom, chatMessages.length, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
+
+  useEffect(() => {
+    wasNearBottomRef.current = isNearBottom();
+  });
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -737,6 +749,7 @@ export function useChatSessionState({
         projectPath: selectedProject.fullPath || selectedProject.path || '',
         limit: null,
         offset: 0,
+        timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
       });
 
       if (currentSessionId !== requestSessionId) return;
