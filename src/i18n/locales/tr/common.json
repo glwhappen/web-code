@@ -22,7 +22,8 @@
     "shell": "Shell",
     "files": "Dosyalar",
     "git": "Kaynak Kontrolü",
-    "tasks": "Görevler"
+    "tasks": "Görevler",
+    "browser": "Tarayıcı"
   },
   "status": {
     "loading": "Yükleniyor...",
@@ -263,5 +264,12 @@
       "updateAvailable": "Güncelleme mevcut",
       "closeSidebar": "Kenar çubuğunu kapat"
     }
+  },
+  "browser": {
+    "urlPlaceholder": "URL girin (ör. http://localhost:3000)",
+    "openInNewTab": "Yeni sekmede aç",
+    "emptyTitle": "Önizlemek için sunucu URL'si girin",
+    "emptyHint": "ör. http://localhost:3000",
+    "proxied": "proxy"
   }
 }
