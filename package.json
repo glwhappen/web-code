@@ -1,6 +1,6 @@
 {
   "name": "@glwhappen/web-code",
-  "version": "1.32.8",
+  "version": "1.32.9",
   "description": "A web-based UI for Claude Code CLI",
   "type": "module",
   "main": "dist-server/server/index.js",

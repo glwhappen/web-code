@@ -108,6 +108,19 @@ const waitForNextPaint = () =>
     window.requestAnimationFrame(() => resolve());
   });
 
+const scheduleScrollToBottom = (scrollToBottom: () => void) => {
+  if (typeof window === 'undefined') {
+    scrollToBottom();
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  });
+};
+
 const scheduleOptimisticSendUi = ({
   addMessage,
   setIsLoading,
@@ -797,7 +810,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        window.setTimeout(() => scrollToBottom(), 0);
+        scheduleScrollToBottom(scrollToBottom);
       }
 
       const getToolsSettings = () => {
@@ -907,7 +920,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        window.setTimeout(() => scrollToBottom(), 0);
+        scheduleScrollToBottom(scrollToBottom);
       }
 
       return true;

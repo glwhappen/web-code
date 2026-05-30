@@ -331,6 +331,7 @@ export function useSessionStore() {
       projectPath?: string;
       limit?: number | null;
       offset?: number;
+      timeoutMs?: number;
     } = {},
   ) => {
     const resolvedSessionId = resolveSessionId(sessionId) ?? sessionId;
@@ -347,7 +348,9 @@ export function useSessionStore() {
 
       const qs = params.toString();
       const url = `/api/providers/sessions/${encodeURIComponent(resolvedSessionId)}/messages${qs ? `?${qs}` : ''}`;
-      const response = await authenticatedFetch(url);
+      const response = await authenticatedFetch(url, {
+        timeoutMs: opts.timeoutMs,
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
