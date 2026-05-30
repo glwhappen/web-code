@@ -132,7 +132,8 @@ export function useChatSessionState({
   const pendingInitialScrollRef = useRef(true);
   const messagesOffsetRef = useRef(0);
   const scrollPositionRef = useRef({ height: 0, top: 0 });
-  const wasNearBottomRef = useRef(true);
+  const isUserScrolledUpRef = useRef(false);
+  const nearBottomRef = useRef(true);
   const loadAllFinishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAllOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedSessionKeyRef = useRef<string | null>(null);
@@ -196,6 +197,8 @@ export function useChatSessionState({
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
     pendingInitialScrollRef.current = true;
+    nearBottomRef.current = true;
+    isUserScrolledUpRef.current = false;
     lastLoadedSessionKeyRef.current = null;
 
     if (loadAllOverlayTimerRef.current) {
@@ -353,6 +356,8 @@ export function useChatSessionState({
     if (!container) return;
 
     const nearBottom = isNearBottom();
+    nearBottomRef.current = nearBottom;
+    isUserScrolledUpRef.current = !nearBottom;
     setIsUserScrolledUp(!nearBottom);
 
     if (!allMessagesLoadedRef.current) {
@@ -384,6 +389,8 @@ export function useChatSessionState({
     }
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
+    nearBottomRef.current = true;
+    isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
   }, [selectedProject?.projectId, selectedSession?.id]);
 
@@ -511,7 +518,7 @@ export function useChatSessionState({
             projectPath: selectedProject.fullPath || selectedProject.path || '',
           });
 
-          if (Boolean(autoScrollToBottom) && isNearBottom()) {
+          if (Boolean(autoScrollToBottom) && nearBottomRef.current && !isUserScrolledUpRef.current) {
             setTimeout(() => scrollToBottom(), 200);
           }
         }
@@ -524,7 +531,6 @@ export function useChatSessionState({
   }, [
     autoScrollToBottom,
     externalMessageUpdate,
-    isNearBottom,
     scrollToBottom,
     selectedProject,
     selectedSession,
@@ -678,7 +684,7 @@ export function useChatSessionState({
     if (searchScrollActiveRef.current) return;
 
     if (autoScrollToBottom) {
-      if (wasNearBottomRef.current || !isUserScrolledUp) {
+      if (nearBottomRef.current && !isUserScrolledUpRef.current) {
         setTimeout(() => scrollToBottom(), 50);
       }
       return;
@@ -691,10 +697,6 @@ export function useChatSessionState({
     const heightDiff = newHeight - prevHeight;
     if (heightDiff > 0 && prevTop > 0) container.scrollTop = prevTop + heightDiff;
   }, [autoScrollToBottom, chatMessages.length, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
-
-  useEffect(() => {
-    wasNearBottomRef.current = isNearBottom();
-  });
 
   useEffect(() => {
     const container = scrollContainerRef.current;
