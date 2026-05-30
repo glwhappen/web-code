@@ -1,8 +1,19 @@
 import { IS_PLATFORM } from "../constants/config";
 
+const DEFAULT_FETCH_TIMEOUT_MS = 20000;
+
+const createTimeoutSignal = (timeoutMs) => {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(timeoutMs);
+  }
+
+  return null;
+};
+
 // Utility function for authenticated API calls
 export const authenticatedFetch = (url, options = {}) => {
   const token = localStorage.getItem('auth-token');
+  const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, signal, ...restOptions } = options;
 
   const defaultHeaders = {};
 
@@ -15,12 +26,16 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 
+  const timeoutSignal = createTimeoutSignal(timeoutMs);
+  const resolvedSignal = signal || timeoutSignal || undefined;
+
   return fetch(url, {
-    ...options,
+    ...restOptions,
     headers: {
       ...defaultHeaders,
-      ...options.headers,
+      ...restOptions.headers,
     },
+    signal: resolvedSignal,
   }).then((response) => {
     const refreshedToken = response.headers.get('X-Refreshed-Token');
     if (refreshedToken) {
