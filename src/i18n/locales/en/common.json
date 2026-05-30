@@ -22,7 +22,8 @@
     "shell": "Shell",
     "files": "Files",
     "git": "Source Control",
-    "tasks": "Tasks"
+    "tasks": "Tasks",
+    "browser": "Browser"
   },
   "status": {
     "loading": "Loading...",
@@ -361,5 +362,12 @@
       "updateAvailable": "Update available",
       "closeSidebar": "Close sidebar"
     }
+  },
+  "browser": {
+    "urlPlaceholder": "Enter URL (e.g. http://localhost:3000)",
+    "openInNewTab": "Open in new tab",
+    "emptyTitle": "Enter a server URL to preview",
+    "emptyHint": "e.g. http://localhost:3000",
+    "proxied": "proxied"
   }
 }
