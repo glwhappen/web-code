@@ -233,18 +233,28 @@ export default function SidebarProjectItem({
           >
             <div className="flex items-center justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div
+                <button
                   className={cn(
-                    'w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
-                    isExpanded ? 'bg-primary/10' : 'bg-muted',
+                    'w-8 h-8 rounded-lg flex items-center justify-center active:scale-90 transition-all duration-150 border',
+                    isStarred
+                      ? 'bg-yellow-500/10 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'
+                      : 'bg-gray-500/10 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800',
                   )}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleStarProject();
+                  }}
+                  title={isStarred ? t('tooltips.removeFromFavorites') : t('tooltips.addToFavorites')}
                 >
-                  {isExpanded ? (
-                    <FolderOpen className="h-4 w-4 text-primary" />
-                  ) : (
-                    <Folder className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </div>
+                  <Star
+                    className={cn(
+                      'w-4 h-4 transition-colors',
+                      isStarred
+                        ? 'text-yellow-600 dark:text-yellow-400 fill-current'
+                        : 'text-gray-600 dark:text-gray-400',
+                    )}
+                  />
+                </button>
 
                 <div className="min-w-0 flex-1">
                   {isEditing ? (
@@ -360,11 +370,28 @@ export default function SidebarProjectItem({
           onContextMenu={handleProjectContextMenu}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            {isExpanded ? (
-              <FolderOpen className="h-4 w-4 flex-shrink-0 text-primary" />
-            ) : (
-              <Folder className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-            )}
+            <div
+              className={cn(
+                'w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-all duration-200',
+                isStarred
+                  ? 'hover:bg-yellow-50 dark:hover:bg-yellow-900/20'
+                  : 'opacity-40 hover:opacity-100 hover:bg-accent',
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleStarProject();
+              }}
+              title={isStarred ? t('tooltips.removeFromFavorites') : t('tooltips.addToFavorites')}
+            >
+              <Star
+                className={cn(
+                  'w-3 h-3 transition-colors',
+                  isStarred
+                    ? 'text-yellow-600 dark:text-yellow-400 fill-current'
+                    : 'text-muted-foreground',
+                )}
+              />
+            </div>
             <div className="min-w-0 flex-1 text-left">
               {isEditing ? (
                 <div className="space-y-1">

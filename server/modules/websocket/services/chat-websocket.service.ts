@@ -30,10 +30,12 @@ type ChatWebSocketDependencies = {
   spawnCursor: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   queryCodex: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   spawnGemini: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
+  spawnOpenCode: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   abortClaudeSDKSession: (sessionId: string, userId?: string | number | null) => Promise<boolean>;
   abortCursorSession: (sessionId: string, userId?: string | number | null) => boolean;
   abortCodexSession: (sessionId: string, userId?: string | number | null) => boolean;
   abortGeminiSession: (sessionId: string, userId?: string | number | null) => boolean;
+  abortOpenCodeSession: (sessionId: string) => boolean;
   resolveToolApproval: (
     requestId: string,
     payload: {
@@ -47,19 +49,21 @@ type ChatWebSocketDependencies = {
   isCursorSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   isCodexSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   isGeminiSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
+  isOpenCodeSessionActive: (sessionId: string) => boolean;
   reconnectSessionWriter: (sessionId: string, ws: WebSocket, userId?: string | number | null) => boolean;
   getPendingApprovalsForSession: (sessionId: string, userId?: string | number | null) => unknown[];
   getActiveClaudeSDKSessions: (userId?: string | number | null) => unknown;
   getActiveCursorSessions: (userId?: string | number | null) => unknown;
   getActiveCodexSessions: (userId?: string | number | null) => unknown;
   getActiveGeminiSessions: (userId?: string | number | null) => unknown;
+  getActiveOpenCodeSessions: () => unknown;
 };
 
 /**
  * Normalizes potentially invalid provider names coming from websocket payloads.
  */
 function readProvider(value: unknown): LLMProvider {
-  if (value === 'claude' || value === 'cursor' || value === 'codex' || value === 'gemini') {
+  if (value === 'claude' || value === 'cursor' || value === 'codex' || value === 'gemini' || value === 'opencode') {
     return value;
   }
 
@@ -199,6 +203,17 @@ export function handleChatConnection(
         return;
       }
 
+      if (messageType === 'opencode-command') {
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'opencode');
+          return;
+        }
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        await dependencies.spawnOpenCode(data.command ?? '', sanitizedOptions, writer);
+        return;
+      }
+
       if (messageType === 'cursor-resume') {
         const authorization = authorizeOptionsCwd(writer.userId, data.options);
         if (!authorization.authorized) {
@@ -229,6 +244,8 @@ export function handleChatConnection(
           success = dependencies.abortCodexSession(sessionId, userId);
         } else if (provider === 'gemini') {
           success = dependencies.abortGeminiSession(sessionId, userId);
+        } else if (provider === 'opencode') {
+          success = dependencies.abortOpenCodeSession(sessionId);
         } else {
           success = await dependencies.abortClaudeSDKSession(sessionId, userId);
         }
@@ -286,6 +303,8 @@ export function handleChatConnection(
           isActive = dependencies.isCodexSessionActive(sessionId, userId);
         } else if (provider === 'gemini') {
           isActive = dependencies.isGeminiSessionActive(sessionId, userId);
+        } else if (provider === 'opencode') {
+          isActive = dependencies.isOpenCodeSessionActive(sessionId);
         } else {
           isActive = dependencies.isClaudeSDKSessionActive(sessionId, userId);
           if (isActive) {
@@ -325,6 +344,7 @@ export function handleChatConnection(
             cursor: dependencies.getActiveCursorSessions(userId),
             codex: dependencies.getActiveCodexSessions(userId),
             gemini: dependencies.getActiveGeminiSessions(userId),
+            opencode: dependencies.getActiveOpenCodeSessions(),
           },
         });
       }
