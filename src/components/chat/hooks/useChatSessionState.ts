@@ -14,7 +14,6 @@ const INITIAL_VISIBLE_MESSAGES = 100;
 const SESSION_MESSAGES_TIMEOUT_MS = 15000;
 
 type PendingViewSession = {
-  sessionId: string | null;
   startedAt: number;
 };
 
@@ -162,7 +161,7 @@ export function useChatSessionState({
      * Why this is essential:
      * - Chat keeps local state that is not fully derived from `selectedSession`:
      *   `currentSessionId`, `pendingUserMessage`, streaming/status flags, message
-     *   pagination/scroll bookkeeping, and pending session IDs in sessionStorage.
+     *   pagination/scroll bookkeeping, and provider-specific sessionStorage keys.
      * - If the user clicks New Session while already on the same route with no
      *   selected session, parent state updates can be idempotent and this local
      *   state would otherwise persist, making the click appear to "do nothing".
@@ -179,7 +178,6 @@ export function useChatSessionState({
     setIsLoading(false);
     setCurrentSessionId(null);
     setPendingUserMessage(null);
-    sessionStorage.removeItem('pendingSessionId');
     sessionStorage.removeItem('cursorSessionId');
     messagesOffsetRef.current = 0;
     setHasMoreMessages(false);
@@ -400,6 +398,12 @@ export function useChatSessionState({
   // Main session loading effect — store-based
   useEffect(() => {
     if (!selectedSession || !selectedProject) {
+      // A new provider run can be in flight before the router has a canonical
+      // selectedSession. Keep the processing banner alive until complete/error.
+      if (pendingViewSessionRef.current) {
+        return;
+      }
+
       resetStreamingState();
       pendingViewSessionRef.current = null;
       setClaudeStatus(null);
@@ -542,10 +546,6 @@ export function useChatSessionState({
     }
   }, [selectedSession]);
 
-  useEffect(() => {
-    if (selectedSession?.id) pendingViewSessionRef.current = null;
-  }, [pendingViewSessionRef, selectedSession?.id]);
-
   // Scroll to search target
   useEffect(() => {
     if (!searchTarget || chatMessages.length === 0 || isLoadingSessionMessages) return;
@@ -630,19 +630,23 @@ export function useChatSessionState({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMessages.length, isLoadingSessionMessages, searchTarget]);
 
-  // Token usage fetch for Claude
+  // Initial token usage fetch for providers with file-backed usage data.
   useEffect(() => {
     if (!selectedProject || !selectedSession?.id) {
       setTokenBudget(null);
       return;
     }
     const sessionProvider = selectedSession.__provider || 'claude';
-    if (sessionProvider !== 'claude') return;
+    if (sessionProvider !== 'claude' && sessionProvider !== 'codex' && sessionProvider !== 'gemini' && sessionProvider !== 'opencode') {
+      setTokenBudget(null);
+      return;
+    }
 
     const fetchInitialTokenUsage = async () => {
       try {
         // Token usage endpoint is now keyed by the DB projectId.
-        const url = `/api/projects/${selectedProject.projectId}/sessions/${selectedSession.id}/token-usage`;
+        const params = new URLSearchParams({ provider: sessionProvider });
+        const url = `/api/projects/${selectedProject.projectId}/sessions/${selectedSession.id}/token-usage?${params.toString()}`;
         const response = await authenticatedFetch(url);
         if (response.ok) {
           setTokenBudget(await response.json());

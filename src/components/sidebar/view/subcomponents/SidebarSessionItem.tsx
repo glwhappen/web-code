@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } fro
 import { Check, Edit2, MoreHorizontal, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import { Badge, Button } from '../../../../shared/view/ui';
+import { Badge, Button, Tooltip } from '../../../../shared/view/ui';
 import { cn } from '../../../../lib/utils';
 import type { Project, ProjectSession, LLMProvider } from '../../../../types/app';
 import type { SessionWithProvider } from '../../types/types';
@@ -85,6 +85,7 @@ export default function SidebarSessionItem({
 }: SidebarSessionItemProps) {
   const sessionView = createSessionViewModel(session, currentTime, t);
   const isSelected = selectedSession?.id === session.id;
+  const isEditing = editingSession === session.id;
   const compactSessionAge = formatCompactSessionAge(sessionView.sessionTime, currentTime);
   const isSessionBeingEdited = editingSession === session.id;
   const [isSessionMenuOpen, setIsSessionMenuOpen] = useState(false);
@@ -189,7 +190,13 @@ export default function SidebarSessionItem({
     <div className="group relative">
       {sessionView.isActive && (
         <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 transform">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-green-500" />
+          <Tooltip content={t('tooltips.activeSessionIndicator')} position="right">
+            <div
+              role="status"
+              aria-label={t('tooltips.activeSessionIndicator')}
+              className="h-2 w-2 animate-pulse rounded-full bg-green-500"
+            />
+          </Tooltip>
         </div>
       )}
 
