@@ -9,6 +9,7 @@ import sessionManager from './sessionManager.js';
 import GeminiResponseHandler from './gemini-response-handler.js';
 import { notifyRunFailed, notifyRunStopped } from './services/notification-orchestrator.js';
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
+import { providerModelsService } from './modules/providers/services/provider-models.service.js';
 import { createNormalizedMessage } from './shared/utils.js';
 
 // Use cross-spawn on Windows for correct .cmd resolution (same pattern as cursor-cli.js)
@@ -133,6 +134,11 @@ async function buildGeminiProcessEnv() {
 async function spawnGemini(command, options = {}, ws) {
     const { sessionId, projectPath, cwd, toolsSettings, permissionMode, images, sessionSummary } = options;
     const userId = ws?.userId ?? null;
+    const resolvedModel = await providerModelsService.resolveResumeModel(
+        'gemini',
+        sessionId,
+        options.model
+    );
     let capturedSessionId = sessionId; // Track session ID throughout the process
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let assistantBlocks = []; // Accumulate the full response blocks including tools
@@ -257,7 +263,7 @@ async function spawnGemini(command, options = {}, ws) {
     }
 
     // Add model for all sessions (both new and resumed)
-    let modelToUse = options.model || 'gemini-2.5-flash';
+    let modelToUse = resolvedModel || 'gemini-2.5-flash';
     args.push('--model', modelToUse);
     args.push('--output-format', 'stream-json');
 
