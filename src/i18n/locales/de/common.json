@@ -22,7 +22,8 @@
     "shell": "Terminal",
     "files": "Dateien",
     "git": "Quellcodeverwaltung",
-    "tasks": "Aufgaben"
+    "tasks": "Aufgaben",
+    "browser": "Browser"
   },
   "status": {
     "loading": "Lädt...",
@@ -233,5 +234,12 @@
       "updateAvailable": "Update verfügbar",
       "closeSidebar": "Seitenleiste schließen"
     }
+  },
+  "browser": {
+    "urlPlaceholder": "URL eingeben (z.B. http://localhost:3000)",
+    "openInNewTab": "In neuem Tab öffnen",
+    "emptyTitle": "Server-URL eingeben zur Vorschau",
+    "emptyHint": "z.B. http://localhost:3000",
+    "proxied": "proxied"
   }
 }
