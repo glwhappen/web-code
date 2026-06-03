@@ -20,6 +20,7 @@ export type ProviderAuthStatusByProvider = Record<AgentProvider, AuthStatus>;
 export type AgentsSettingsTabProps = {
   providerAuthStatus: ProviderAuthStatusByProvider;
   onProviderLogin: (provider: AgentProvider) => void;
+  isAdmin: boolean;
   claudePermissions: ClaudePermissionsState;
   onClaudePermissionsChange: (value: ClaudePermissionsState) => void;
   cursorPermissions: CursorPermissionsState;
@@ -47,6 +48,7 @@ export type AgentCategoryContentSectionProps = {
   selectedAgent: AgentProvider;
   selectedCategory: AgentCategory;
   agentContextById: AgentContextByProvider;
+  isAdmin: boolean;
   claudePermissions: ClaudePermissionsState;
   onClaudePermissionsChange: (value: ClaudePermissionsState) => void;
   cursorPermissions: CursorPermissionsState;

@@ -4,11 +4,7 @@ import type { TFunction } from 'i18next';
 import { IS_PLATFORM } from '../../../../constants/config';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
 import { useAuth } from '../../../auth/context/AuthContext';
-
-const GITHUB_ISSUES_URL = 'https://github.com/siteboon/claudecodeui/issues/new';
-const GITHUB_REPO_URL = 'https://github.com/siteboon/claudecodeui';
-
-const DISCORD_INVITE_URL = 'https://discord.gg/buxwujPNRE';
+import { useSidebarUiConfig } from '../../../../hooks/useSidebarUiConfig';
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -38,10 +34,11 @@ export default function SidebarFooter({
   t,
 }: SidebarFooterProps) {
   const { logout } = useAuth();
+  const uiConfig = useSidebarUiConfig();
 
   return (
     <div className="flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}>
-      {updateAvailable ? (
+      {updateAvailable && uiConfig.showUpdateNotification ? (
         <>
           <div className="nav-divider" />
           <div className="hidden px-2 py-1.5 md:block">
@@ -88,29 +85,33 @@ export default function SidebarFooter({
 
       <div className="nav-divider" />
 
-      <div className="hidden px-2 pt-1.5 md:block">
-        <a
-          href={GITHUB_ISSUES_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-        >
-          <Bug className="h-3.5 w-3.5" />
-          <span className="text-sm">{t('actions.reportIssue')}</span>
-        </a>
-      </div>
+      {uiConfig.reportIssue.show && (
+        <div className="hidden px-2 pt-1.5 md:block">
+          <a
+            href={uiConfig.reportIssue.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <Bug className="h-3.5 w-3.5" />
+            <span className="text-sm">{t('actions.reportIssue')}</span>
+          </a>
+        </div>
+      )}
 
-      <div className="hidden px-2 md:block">
-        <a
-          href={DISCORD_INVITE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-        >
-          <DiscordIcon className="h-3.5 w-3.5" />
-          <span className="text-sm">{t('actions.joinCommunity')}</span>
-        </a>
-      </div>
+      {uiConfig.joinCommunity.show && (
+        <div className="hidden px-2 md:block">
+          <a
+            href={uiConfig.joinCommunity.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <DiscordIcon className="h-3.5 w-3.5" />
+            <span className="text-sm">{t('actions.joinCommunity')}</span>
+          </a>
+        </div>
+      )}
 
       <div className="hidden px-2 py-1.5 md:block">
         <button
@@ -132,10 +133,10 @@ export default function SidebarFooter({
         </button>
       </div>
 
-      {!IS_PLATFORM && (
+      {!IS_PLATFORM && uiConfig.githubRepo.show && (
         <div className="hidden px-3 py-2 text-center md:block">
           <a
-            href={GITHUB_REPO_URL}
+            href={uiConfig.githubRepo.url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] text-muted-foreground/40 transition-colors hover:text-muted-foreground"
@@ -145,33 +146,37 @@ export default function SidebarFooter({
         </div>
       )}
 
-      <div className="px-3 pt-3 md:hidden">
-        <a
-          href={GITHUB_ISSUES_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
-            <Bug className="h-4.5 w-4.5 text-muted-foreground" />
-          </div>
-          <span className="text-base font-medium text-foreground">{t('actions.reportIssue')}</span>
-        </a>
-      </div>
+      {uiConfig.reportIssue.show && (
+        <div className="px-3 pt-3 md:hidden">
+          <a
+            href={uiConfig.reportIssue.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
+              <Bug className="h-4.5 w-4.5 text-muted-foreground" />
+            </div>
+            <span className="text-base font-medium text-foreground">{t('actions.reportIssue')}</span>
+          </a>
+        </div>
+      )}
 
-      <div className="px-3 pt-2 md:hidden">
-        <a
-          href={DISCORD_INVITE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
-            <DiscordIcon className="h-4.5 w-4.5 text-muted-foreground" />
-          </div>
-          <span className="text-base font-medium text-foreground">{t('actions.joinCommunity')}</span>
-        </a>
-      </div>
+      {uiConfig.joinCommunity.show && (
+        <div className="px-3 pt-2 md:hidden">
+          <a
+            href={uiConfig.joinCommunity.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
+              <DiscordIcon className="h-4.5 w-4.5 text-muted-foreground" />
+            </div>
+            <span className="text-base font-medium text-foreground">{t('actions.joinCommunity')}</span>
+          </a>
+        </div>
+      )}
 
       <div className="px-3 pt-2 md:hidden">
         <button
