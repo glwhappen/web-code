@@ -3,6 +3,7 @@ import { Globe, RefreshCw, ExternalLink, ArrowLeft, ArrowRight, X, Monitor } fro
 import { useTranslation } from 'react-i18next';
 
 const PROXY_PREFIX = '/api/browser-proxy/';
+const PROXY_TOKEN_PARAM = 'proxyToken';
 
 // Matches http://localhost:PORT or http://127.0.0.1:PORT
 const LOCAL_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:(\d+))?(\/.*)?$/i;
@@ -20,21 +21,32 @@ function normalizeUrl(input: string): string {
 }
 
 // Convert a localhost URL to the server-side proxy path
-function toProxyUrl(url: string): string {
+function toProxyUrl(url: string, includeToken = true): string {
   const m = url.match(LOCAL_URL_RE);
   if (!m) return url;
   const host = m[1].toLowerCase();
   const port = m[3] || '80';
   const path = m[4] || '/';
-  return `${PROXY_PREFIX}${host}:${port}${path}`;
+  const proxyUrl = `${PROXY_PREFIX}${host}:${port}${path}`;
+  if (!includeToken) return proxyUrl;
+
+  const token = localStorage.getItem('auth-token');
+  if (!token) return proxyUrl;
+
+  const separator = path.includes('?') ? '&' : '?';
+  return `${proxyUrl}${separator}${PROXY_TOKEN_PARAM}=${encodeURIComponent(token)}`;
 }
 
 // Convert a proxy URL (as seen in iframe.contentWindow.location.href) back to display URL
 function fromProxyUrl(href: string): string | null {
   // href = "http://server:3001/api/browser-proxy/localhost:3000/some/path"
-  const idx = href.indexOf(PROXY_PREFIX);
+  const parsed = new URL(href, window.location.origin);
+  const idx = parsed.pathname.indexOf(PROXY_PREFIX);
   if (idx === -1) return null;
-  return 'http://' + href.slice(idx + PROXY_PREFIX.length);
+
+  parsed.searchParams.delete(PROXY_TOKEN_PARAM);
+  const target = `${parsed.pathname.slice(idx + PROXY_PREFIX.length)}${parsed.search}${parsed.hash}`;
+  return 'http://' + target;
 }
 
 // Determine the actual URL to load in the iframe
@@ -139,7 +151,9 @@ export default function BrowserPanel() {
   }, []);
 
   const handleOpenInNewTab = () => {
-    if (displayUrl) window.open(displayUrl, '_blank', 'noopener,noreferrer');
+    if (!displayUrl) return;
+    const targetUrl = isLocalUrl(displayUrl) ? toProxyUrl(displayUrl, false) : displayUrl;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const btnClass =

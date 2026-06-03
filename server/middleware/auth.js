@@ -5,6 +5,34 @@ import { IS_PLATFORM } from '../constants/config.js';
 
 // Use env var if set, otherwise auto-generate a unique secret per installation
 const JWT_SECRET = process.env.JWT_SECRET || appConfigDb.getOrCreateJwtSecret();
+const AUTH_COOKIE_NAME = 'auth-token';
+const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+const parseCookies = (cookieHeader) => {
+  if (!cookieHeader) return {};
+
+  return cookieHeader.split(';').reduce((cookies, part) => {
+    const [rawName, ...rawValue] = part.trim().split('=');
+    if (!rawName) return cookies;
+
+    cookies[rawName] = decodeURIComponent(rawValue.join('=') || '');
+    return cookies;
+  }, {});
+};
+
+const getCookieToken = (req) => {
+  const cookies = parseCookies(req.headers.cookie);
+  return cookies[AUTH_COOKIE_NAME] || null;
+};
+
+const setAuthCookie = (res, token) => {
+  const cookieValue = `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax`;
+  res.append('Set-Cookie', cookieValue);
+};
+
+const clearAuthCookie = (res) => {
+  res.append('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+};
 
 // Optional API key middleware
 const validateApiKey = (req, res, next) => {
@@ -46,6 +74,16 @@ const authenticateToken = async (req, res, next) => {
     token = req.query.token;
   }
 
+  // Browser proxy bootstrap: iframe requests can carry a one-time proxyToken
+  if (!token && req.query.proxyToken) {
+    token = req.query.proxyToken;
+  }
+
+  // Same-origin iframe/subresource requests can rely on the auth cookie
+  if (!token) {
+    token = getCookieToken(req);
+  }
+
   if (!token) {
     return res.status(401).json({ error: 'Access denied. No token provided.' });
   }
@@ -66,7 +104,12 @@ const authenticateToken = async (req, res, next) => {
       if (now > decoded.iat + halfLife) {
         const newToken = generateToken(user);
         res.setHeader('X-Refreshed-Token', newToken);
+        setAuthCookie(res, newToken);
       }
+    }
+
+    if (req.query.proxyToken && getCookieToken(req) !== token) {
+      setAuthCookie(res, token);
     }
 
     req.user = user;
@@ -138,5 +181,7 @@ export {
   requireAdmin,
   generateToken,
   authenticateWebSocket,
-  JWT_SECRET
+  JWT_SECRET,
+  setAuthCookie,
+  clearAuthCookie
 };

@@ -36,10 +36,10 @@ router.use(async (req, res) => {
   const hostport = pathMatch[1];
   const targetPath = pathMatch[2] || '/';
 
-  // Preserve the original query string without re-encoding
-  const questionIdx = req.url.indexOf('?');
-  const rawQuery = questionIdx !== -1 ? req.url.slice(questionIdx) : '';
-  const fullTargetPath = targetPath + rawQuery;
+  const requestUrl = new URL(req.originalUrl, 'http://localhost');
+  requestUrl.searchParams.delete('proxyToken');
+  const sanitizedQuery = requestUrl.searchParams.toString();
+  const fullTargetPath = targetPath + (sanitizedQuery ? `?${sanitizedQuery}` : '');
 
   // Parse host and port
   const lastColon = hostport.lastIndexOf(':');
