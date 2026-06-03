@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 
-import { userDb } from '../modules/database/index.js';
+import { userDb, appConfigDb, getConnection } from '../modules/database/index.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -122,6 +122,122 @@ router.put('/users/:id/password', async (req, res) => {
   } catch (error) {
     console.error('Admin reset password error:', error);
     return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// ===============================
+// Sidebar UI Config
+// ===============================
+
+const DEFAULT_SIDEBAR_UI_CONFIG = {
+  reportIssue: { show: true, url: 'https://github.com/siteboon/claudecodeui/issues/new' },
+  joinCommunity: { show: true, url: 'https://discord.gg/buxwujPNRE' },
+  githubRepo: { show: true, url: 'https://github.com/siteboon/claudecodeui' },
+  githubStarBadge: { show: true, url: 'https://github.com/siteboon/claudecodeui' },
+  showUpdateNotification: true,
+};
+
+router.get('/ui-config', (req, res) => {
+  try {
+    const raw = appConfigDb.get('sidebar_ui_config');
+    const config = raw ? { ...DEFAULT_SIDEBAR_UI_CONFIG, ...JSON.parse(raw) } : DEFAULT_SIDEBAR_UI_CONFIG;
+    return res.json({ success: true, data: config });
+  } catch (error) {
+    console.error('Admin get ui-config error:', error);
+    return res.status(500).json({ error: 'Failed to load UI config' });
+  }
+});
+
+router.put('/ui-config', (req, res) => {
+  try {
+    const body = req.body;
+    if (!body || typeof body !== 'object') {
+      return res.status(400).json({ error: 'Invalid config payload' });
+    }
+    // Merge with defaults so unknown keys are preserved
+    const merged = { ...DEFAULT_SIDEBAR_UI_CONFIG, ...body };
+    appConfigDb.set('sidebar_ui_config', JSON.stringify(merged));
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Admin put ui-config error:', error);
+    return res.status(500).json({ error: 'Failed to save UI config' });
+  }
+});
+
+// Usage logs — query queued_messages joined with users
+router.get('/usage-logs', (req, res) => {
+  try {
+    const db = getConnection();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    const params = [];
+
+    const rawUserId = req.query.userId;
+    if (rawUserId) {
+      const uid = parseInt(rawUserId);
+      if (Number.isInteger(uid) && uid > 0) {
+        conditions.push('qm.user_id = ?');
+        params.push(uid);
+      }
+    }
+
+    const rawProvider = req.query.provider;
+    if (typeof rawProvider === 'string' && rawProvider.trim()) {
+      conditions.push('qm.provider = ?');
+      params.push(rawProvider.trim());
+    }
+
+    const rawFrom = req.query.from;
+    if (typeof rawFrom === 'string' && rawFrom.trim()) {
+      conditions.push("qm.created_at >= ?");
+      params.push(rawFrom.trim());
+    }
+
+    const rawTo = req.query.to;
+    if (typeof rawTo === 'string' && rawTo.trim()) {
+      conditions.push("qm.created_at <= ?");
+      params.push(rawTo.trim() + ' 23:59:59');
+    }
+
+    const whereSQL = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const { count: total } = db.prepare(
+      `SELECT COUNT(*) as count FROM queued_messages qm ${whereSQL}`
+    ).get(...params);
+
+    const logs = db.prepare(`
+      SELECT qm.id, qm.user_id, u.username, qm.session_id,
+             qm.provider, qm.model, qm.permission_mode, qm.created_at
+      FROM queued_messages qm
+      JOIN users u ON qm.user_id = u.id
+      ${whereSQL}
+      ORDER BY qm.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const byProvider = db.prepare(`
+      SELECT qm.provider, COUNT(*) as count
+      FROM queued_messages qm ${whereSQL}
+      GROUP BY qm.provider
+      ORDER BY count DESC
+    `).all(...params);
+
+    const byUser = db.prepare(`
+      SELECT u.id as userId, u.username, COUNT(*) as count
+      FROM queued_messages qm
+      JOIN users u ON qm.user_id = u.id
+      ${whereSQL}
+      GROUP BY qm.user_id
+      ORDER BY count DESC
+    `).all(...params);
+
+    return res.json({ success: true, data: { logs, total, page, limit, byProvider, byUser } });
+  } catch (error) {
+    console.error('Admin usage-logs error:', error);
+    return res.status(500).json({ error: 'Failed to load usage logs' });
   }
 });
 

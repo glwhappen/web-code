@@ -1,8 +1,6 @@
 import { Settings, Sparkles, PanelLeftOpen, Bug } from 'lucide-react';
 import type { TFunction } from 'i18next';
-
-const DISCORD_INVITE_URL = 'https://discord.gg/buxwujPNRE';
-const GITHUB_ISSUES_URL = 'https://github.com/siteboon/claudecodeui/issues/new';
+import { useSidebarUiConfig } from '../../../../hooks/useSidebarUiConfig';
 
 function DiscordIcon({ className }: { className?: string }) {
   return (
@@ -27,6 +25,8 @@ export default function SidebarCollapsed({
   onShowVersionModal,
   t,
 }: SidebarCollapsedProps) {
+  const uiConfig = useSidebarUiConfig();
+
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 bg-background/80 py-3 backdrop-blur-sm">
       {/* Expand button with brand logo */}
@@ -52,31 +52,35 @@ export default function SidebarCollapsed({
       </button>
 
       {/* Report Issue */}
-      <a
-        href={GITHUB_ISSUES_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
-        aria-label={t('actions.reportIssue')}
-        title={t('actions.reportIssue')}
-      >
-        <Bug className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
-      </a>
+      {uiConfig.reportIssue.show && (
+        <a
+          href={uiConfig.reportIssue.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
+          aria-label={t('actions.reportIssue')}
+          title={t('actions.reportIssue')}
+        >
+          <Bug className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+        </a>
+      )}
 
       {/* Discord */}
-      <a
-        href={DISCORD_INVITE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
-        aria-label={t('actions.joinCommunity')}
-        title={t('actions.joinCommunity')}
-      >
-        <DiscordIcon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
-      </a>
+      {uiConfig.joinCommunity.show && (
+        <a
+          href={uiConfig.joinCommunity.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
+          aria-label={t('actions.joinCommunity')}
+          title={t('actions.joinCommunity')}
+        >
+          <DiscordIcon className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+        </a>
+      )}
 
       {/* Update indicator */}
-      {updateAvailable && (
+      {updateAvailable && uiConfig.showUpdateNotification && (
         <button
           onClick={onShowVersionModal}
           className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
