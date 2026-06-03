@@ -6,7 +6,8 @@ export type PreferenceToggleKey =
   | 'showRawParameters'
   | 'showThinking'
   | 'autoScrollToBottom'
-  | 'sendByCtrlEnter';
+  | 'sendByCtrlEnter'
+  | 'dockBrowserToChat';
 
 export type QuickSettingsPreferences = Record<PreferenceToggleKey, boolean>;
 
