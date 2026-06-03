@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ import type {
 } from "../../../../types/app";
 import SessionProviderLogo from "../../../llm-logo-provider/SessionProviderLogo";
 import { NextTaskBanner } from "../../../task-master";
+import { useProviderAuthStatus } from "../../../provider-auth/hooks/useProviderAuthStatus";
 import {
   Dialog,
   DialogTrigger,
@@ -121,13 +122,24 @@ export default function ProviderSelectionEmptyState({
   const { t } = useTranslation("chat");
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  const { providerAuthStatus, refreshProviderAuthStatuses } = useProviderAuthStatus({ initialLoading: true });
+
+  useEffect(() => {
+    void refreshProviderAuthStatuses();
+  }, [refreshProviderAuthStatuses]);
+
   const visibleProviderGroups = useMemo<ProviderGroup[]>(() => {
-    return PROVIDER_META.map((p) => ({
-      id: p.id,
-      name: p.name,
-      models: providerModelCatalog[p.id]?.OPTIONS ?? [],
-    }));
-  }, [providerModelCatalog]);
+    return PROVIDER_META
+      .filter((p) => {
+        const status = providerAuthStatus[p.id];
+        return status.loading || status.authenticated;
+      })
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        models: providerModelCatalog[p.id]?.OPTIONS ?? [],
+      }));
+  }, [providerModelCatalog, providerAuthStatus]);
 
   const nextTaskPrompt = t("tasks.nextTaskPrompt", {
     defaultValue: "Start the next task",
