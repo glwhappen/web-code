@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Edit2, MoreHorizontal, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
@@ -359,10 +360,10 @@ export default function SidebarSessionItem({
           </div>
       </div>
 
-      {isSessionMenuOpen && !isSessionBeingEdited && (
+      {isSessionMenuOpen && !isSessionBeingEdited && typeof document !== 'undefined' && createPortal(
         <div
           data-session-actions-menu={session.id}
-          className="fixed z-[70] w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+          className="fixed z-[200] w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
           style={{ top: `${sessionMenuPosition.top}px`, left: `${sessionMenuPosition.left}px` }}
         >
           <button
@@ -389,7 +390,8 @@ export default function SidebarSessionItem({
               {t('sessions.deleteSession')}
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
