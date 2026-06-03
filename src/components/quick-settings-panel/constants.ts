@@ -1,6 +1,7 @@
 import {
   ArrowDown,
   Brain,
+  Columns2,
   Eye,
   Languages,
   Maximize2,
@@ -45,6 +46,11 @@ export const VIEW_OPTION_TOGGLES: PreferenceToggleItem[] = [
     key: 'autoScrollToBottom',
     labelKey: 'quickSettings.autoScrollToBottom',
     icon: ArrowDown,
+  },
+  {
+    key: 'dockBrowserToChat',
+    labelKey: 'quickSettings.dockBrowserToChat',
+    icon: Columns2,
   },
 ];
 

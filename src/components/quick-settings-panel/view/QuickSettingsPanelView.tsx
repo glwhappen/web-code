@@ -27,9 +27,11 @@ export default function QuickSettingsPanelView() {
     showThinking: preferences.showThinking,
     autoScrollToBottom: preferences.autoScrollToBottom,
     sendByCtrlEnter: preferences.sendByCtrlEnter,
+    dockBrowserToChat: preferences.dockBrowserToChat,
   }), [
     preferences.autoExpandTools,
     preferences.autoScrollToBottom,
+    preferences.dockBrowserToChat,
     preferences.sendByCtrlEnter,
     preferences.showRawParameters,
     preferences.showThinking,
