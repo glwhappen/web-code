@@ -14,19 +14,30 @@ import {
   validateWorkspacePath,
 } from '@/shared/utils.js';
 
+import { projectDisplayNameToHostLabel } from '../../../../shared/projectHosts.js';
+
 type CreateProjectInput = {
   userId: number;
   username: string;
   projectPath: string;
   customName?: string | null;
+  previewProdPort?: number | null;
+  previewDevPort?: number | null;
 };
 
 type CreateProjectDependencies = {
   validatePath: (projectPath: string, workspaceRoot: string) => Promise<WorkspacePathValidationResult>;
   ensureWorkspaceDirectory: (projectPath: string) => Promise<void>;
   resolveUserWorkspaceRoot: (username: string) => Promise<string>;
-  persistProjectPath: (userId: number, projectPath: string, customName: string | null) => CreateProjectPathResult;
+  persistProjectPath: (
+    userId: number,
+    projectPath: string,
+    customName: string | null,
+    previewProdPort?: number | null,
+    previewDevPort?: number | null,
+  ) => CreateProjectPathResult;
   getProjectByPath: (userId: number, projectPath: string) => ProjectRepositoryRow | null;
+  getAllProjectPaths: () => ProjectRepositoryRow[];
 };
 
 type ProjectApiView = {
@@ -35,6 +46,8 @@ type ProjectApiView = {
   fullPath: string;
   displayName: string;
   customName: string | null;
+  previewProdPort: number | null;
+  previewDevPort: number | null;
   isArchived: boolean;
   isStarred: boolean;
   sessions: [];
@@ -66,10 +79,17 @@ const defaultDependencies: CreateProjectDependencies = {
     }
   },
   resolveUserWorkspaceRoot: ensureUserWorkspaceRoot,
-  persistProjectPath: (userId: number, projectPath: string, customName: string | null): CreateProjectPathResult =>
-    projectsDb.createProjectPath(userId, projectPath, customName),
+  persistProjectPath: (
+    userId: number,
+    projectPath: string,
+    customName: string | null,
+    previewProdPort?: number | null,
+    previewDevPort?: number | null,
+  ): CreateProjectPathResult =>
+    projectsDb.createProjectPath(userId, projectPath, customName, previewProdPort, previewDevPort),
   getProjectByPath: (userId: number, projectPath: string): ProjectRepositoryRow | null =>
     projectsDb.getProjectPath(userId, projectPath),
+  getAllProjectPaths: (): ProjectRepositoryRow[] => projectsDb.getAllProjectPaths(),
 };
 
 function resolveDisplayName(customName: string | null | undefined, projectPath: string): string {
@@ -81,6 +101,123 @@ function resolveDisplayName(customName: string | null | undefined, projectPath: 
   return path.basename(projectPath) || projectPath;
 }
 
+function resolveProjectHostLabel(displayName: string, projectPath: string): string {
+  return projectDisplayNameToHostLabel(displayName, projectPath);
+}
+
+function normalizePreviewPort(port: unknown): number | null {
+  if (typeof port !== 'number' || !Number.isFinite(port)) {
+    return null;
+  }
+
+  const normalizedPort = Math.floor(port);
+  if (normalizedPort < 1 || normalizedPort > 65535) {
+    return null;
+  }
+
+  return normalizedPort;
+}
+
+function assertProjectHostLabelIsAvailable(
+  desiredDisplayName: string,
+  projectPath: string,
+  projectRows: ProjectRepositoryRow[],
+  currentProjectId: string | null = null,
+): void {
+  const desiredLabel = resolveProjectHostLabel(desiredDisplayName, projectPath);
+  if (!desiredLabel) {
+    return;
+  }
+
+  const conflictingProject = projectRows.find((projectRow) => {
+    if (currentProjectId && projectRow.project_id === currentProjectId) {
+      return false;
+    }
+
+    const existingDisplayName = resolveDisplayName(projectRow.custom_project_name, projectRow.project_path);
+    const existingLabel = resolveProjectHostLabel(existingDisplayName, projectRow.project_path);
+    return existingLabel === desiredLabel;
+  });
+
+  if (conflictingProject) {
+    throw new AppError('Project host alias already exists', {
+      code: 'PROJECT_HOST_ALIAS_CONFLICT',
+      statusCode: 409,
+      details: `Project host alias "${desiredLabel}" is already in use. Choose a different English project name.`,
+    });
+  }
+}
+
+function assertProjectPreviewPortsAreAvailable(
+  desiredPreviewProdPort: number | null,
+  desiredPreviewDevPort: number | null,
+  projectRows: ProjectRepositoryRow[],
+  currentProjectId: string | null = null,
+): void {
+  if (
+    desiredPreviewProdPort !== null &&
+    desiredPreviewDevPort !== null &&
+    desiredPreviewProdPort === desiredPreviewDevPort
+  ) {
+    throw new AppError('Production and development preview ports must be different', {
+      code: 'PROJECT_PREVIEW_PORT_CONFLICT',
+      statusCode: 409,
+      details: `Preview ports ${desiredPreviewProdPort} and ${desiredPreviewDevPort} cannot point to the same port.`,
+    });
+  }
+
+  const usedPorts = new Map<number, { projectRow: ProjectRepositoryRow; field: 'prod' | 'dev' }>();
+  for (const projectRow of projectRows) {
+    if (currentProjectId && projectRow.project_id === currentProjectId) {
+      continue;
+    }
+
+    const prodPort = normalizePreviewPort(projectRow.preview_prod_port);
+    if (prodPort !== null && !usedPorts.has(prodPort)) {
+      usedPorts.set(prodPort, { projectRow, field: 'prod' });
+    }
+
+    const devPort = normalizePreviewPort(projectRow.preview_dev_port);
+    if (devPort !== null && !usedPorts.has(devPort)) {
+      usedPorts.set(devPort, { projectRow, field: 'dev' });
+    }
+  }
+
+  const desiredPorts: Array<{ value: number; field: 'prod' | 'dev' }> = [];
+  if (desiredPreviewProdPort !== null) {
+    desiredPorts.push({ value: desiredPreviewProdPort, field: 'prod' });
+  }
+  if (desiredPreviewDevPort !== null) {
+    desiredPorts.push({ value: desiredPreviewDevPort, field: 'dev' });
+  }
+
+  for (const desiredPort of desiredPorts) {
+    const conflict = usedPorts.get(desiredPort.value);
+    if (!conflict) {
+      continue;
+    }
+
+    const conflictedProjectName = resolveDisplayName(conflict.projectRow.custom_project_name, conflict.projectRow.project_path);
+    throw new AppError('Preview port already exists', {
+      code: 'PROJECT_PREVIEW_PORT_CONFLICT',
+      statusCode: 409,
+      details: `Port ${desiredPort.value} is already used by project "${conflictedProjectName}" (${conflict.field === 'prod' ? 'production' : 'development'}).`,
+    });
+  }
+}
+
+function assertProjectRoutingIsAvailable(
+  desiredDisplayName: string,
+  projectPath: string,
+  desiredPreviewProdPort: number | null,
+  desiredPreviewDevPort: number | null,
+  projectRows: ProjectRepositoryRow[],
+  currentProjectId: string | null = null,
+): void {
+  assertProjectHostLabelIsAvailable(desiredDisplayName, projectPath, projectRows, currentProjectId);
+  assertProjectPreviewPortsAreAvailable(desiredPreviewProdPort, desiredPreviewDevPort, projectRows, currentProjectId);
+}
+
 function mapProjectRowToApiView(projectRow: ProjectRepositoryRow): ProjectApiView {
   return {
     projectId: projectRow.project_id,
@@ -88,6 +225,8 @@ function mapProjectRowToApiView(projectRow: ProjectRepositoryRow): ProjectApiVie
     fullPath: projectRow.project_path,
     displayName: resolveDisplayName(projectRow.custom_project_name, projectRow.project_path),
     customName: projectRow.custom_project_name,
+    previewProdPort: projectRow.preview_prod_port ?? null,
+    previewDevPort: projectRow.preview_dev_port ?? null,
     isArchived: Boolean(projectRow.isArchived),
     isStarred: Boolean(projectRow.isStarred),
     sessions: [],
@@ -135,7 +274,22 @@ export async function createProject(
   await dependencies.ensureWorkspaceDirectory(resolvedProjectPath);
 
   const normalizedCustomName = resolveDisplayName(input.customName ?? null, resolvedProjectPath);
-  const persistedProject = dependencies.persistProjectPath(input.userId, resolvedProjectPath, normalizedCustomName);
+  const normalizedPreviewProdPort = normalizePreviewPort(input.previewProdPort ?? null);
+  const normalizedPreviewDevPort = normalizePreviewPort(input.previewDevPort ?? null);
+  assertProjectRoutingIsAvailable(
+    normalizedCustomName,
+    resolvedProjectPath,
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+    dependencies.getAllProjectPaths(),
+  );
+  const persistedProject = dependencies.persistProjectPath(
+    input.userId,
+    resolvedProjectPath,
+    normalizedCustomName,
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+  );
 
   if (persistedProject.outcome === 'active_conflict') {
     throw new AppError('Project path already exists and is active', {
@@ -165,5 +319,86 @@ export async function createProject(
  */
 export function updateProjectDisplayName(userId: number, projectId: string, newDisplayName: unknown): void {
   const trimmed = typeof newDisplayName === 'string' ? newDisplayName.trim() : '';
+  const currentProject = projectsDb.getProjectById(userId, projectId);
+  if (currentProject) {
+    const nextDisplayName = trimmed.length > 0 ? trimmed : resolveDisplayName(null, currentProject.project_path);
+    assertProjectHostLabelIsAvailable(
+      nextDisplayName,
+      currentProject.project_path,
+      projectsDb.getAllProjectPaths(),
+      projectId,
+    );
+  }
   projectsDb.updateCustomProjectNameById(userId, projectId, trimmed.length > 0 ? trimmed : null);
+}
+
+export function updateProjectPreviewPorts(
+  userId: number,
+  projectId: string,
+  previewProdPort: unknown,
+  previewDevPort: unknown,
+): void {
+  const currentProject = projectsDb.getProjectById(userId, projectId);
+  if (!currentProject) {
+    throw new AppError('Project not found', {
+      code: 'PROJECT_NOT_FOUND',
+      statusCode: 404,
+    });
+  }
+
+  const normalizedPreviewProdPort = normalizePreviewPort(previewProdPort);
+  const normalizedPreviewDevPort = normalizePreviewPort(previewDevPort);
+  assertProjectPreviewPortsAreAvailable(
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+    projectsDb.getAllActiveProjectPaths(),
+    projectId,
+  );
+
+  projectsDb.updateProjectPreviewPortsById(
+    userId,
+    projectId,
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+  );
+}
+
+export function updateProjectRouting(
+  userId: number,
+  projectId: string,
+  displayName: unknown,
+  previewProdPort: unknown,
+  previewDevPort: unknown,
+): void {
+  const currentProject = projectsDb.getProjectById(userId, projectId);
+  if (!currentProject) {
+    throw new AppError('Project not found', {
+      code: 'PROJECT_NOT_FOUND',
+      statusCode: 404,
+    });
+  }
+
+  const trimmedDisplayName = typeof displayName === 'string' ? displayName.trim() : '';
+  const resolvedDisplayName = trimmedDisplayName.length > 0
+    ? trimmedDisplayName
+    : resolveDisplayName(null, currentProject.project_path);
+  const normalizedPreviewProdPort = normalizePreviewPort(previewProdPort);
+  const normalizedPreviewDevPort = normalizePreviewPort(previewDevPort);
+
+  assertProjectRoutingIsAvailable(
+    resolvedDisplayName,
+    currentProject.project_path,
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+    projectsDb.getAllActiveProjectPaths(),
+    projectId,
+  );
+
+  projectsDb.updateProjectRoutingById(
+    userId,
+    projectId,
+    trimmedDisplayName.length > 0 ? trimmedDisplayName : null,
+    normalizedPreviewProdPort,
+    normalizedPreviewDevPort,
+  );
 }

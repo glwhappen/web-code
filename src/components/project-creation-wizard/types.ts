@@ -35,6 +35,8 @@ export type CreateFolderResponse = {
 export type CreateProjectPayload = {
   path: string;
   customName?: string;
+  previewProdPort?: number | null;
+  previewDevPort?: number | null;
 };
 
 export type CreateProjectApiError = {

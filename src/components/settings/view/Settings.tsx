@@ -16,6 +16,7 @@ import AppearanceSettingsTab from '../view/tabs/AppearanceSettingsTab';
 import CredentialsSettingsTab from '../view/tabs/api-settings/CredentialsSettingsTab';
 import GitSettingsTab from '../view/tabs/git-settings/GitSettingsTab';
 import NotificationsSettingsTab from '../view/tabs/NotificationsSettingsTab';
+import ProjectRoutingTab from '../view/tabs/ProjectRoutingTab';
 import TasksSettingsTab from '../view/tabs/tasks-settings/TasksSettingsTab';
 import UserManagementTab from '../view/tabs/UserManagementTab';
 import UsageLogsTab from '../view/tabs/UsageLogsTab';
@@ -148,6 +149,8 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
               )}
 
               {activeTab === 'tasks' && <TasksSettingsTab />}
+
+              {activeTab === 'projects' && <ProjectRoutingTab projects={projects} />}
 
               {activeTab === 'notifications' && (
                 <NotificationsSettingsTab
