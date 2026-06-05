@@ -1,11 +1,161 @@
-import express from 'express';
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
 
+import express from 'express';
+
 const router = express.Router();
 const PROXY_PREFIX = '/api/browser-proxy';
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+function buildRuntimeShim(hostport, proxyBase) {
+  const payload = JSON.stringify({
+    hostport,
+    proxyPrefix: PROXY_PREFIX,
+    proxyBase,
+    allowedHosts: Array.from(ALLOWED_HOSTS),
+  });
+
+  return `<script>
+(() => {
+  const config = ${payload};
+  const allowedHosts = new Set(config.allowedHosts);
+  const proxyPrefix = config.proxyPrefix;
+  const proxyBase = config.proxyBase;
+  const pageOrigin = window.location.origin;
+  const authToken = (() => {
+    try {
+      return window.localStorage.getItem('auth-token');
+    } catch {
+      return null;
+    }
+  })();
+
+  const isLocalHost = (host) => allowedHosts.has((host || '').toLowerCase());
+
+  const stripProxyToken = (url) => {
+    try {
+      url.searchParams.delete('proxyToken');
+    } catch {}
+    return url;
+  };
+
+  const buildProxyUrl = (targetUrl) => {
+    const protocol = targetUrl.protocol === 'https:' ? 'https:' : 'http:';
+    const defaultPort = protocol === 'https:' ? '443' : '80';
+    const targetPort = targetUrl.port || defaultPort;
+    return new URL(
+      proxyPrefix + '/' + targetUrl.hostname + ':' + targetPort + targetUrl.pathname + targetUrl.search + targetUrl.hash,
+      pageOrigin,
+    );
+  };
+
+  const normalizeToProxy = (input) => {
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input || '');
+    if (!raw || raw.startsWith('data:') || raw.startsWith('blob:') || raw.startsWith('javascript:')) {
+      return raw;
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(raw, window.location.href);
+    } catch {
+      return raw;
+    }
+
+    stripProxyToken(parsed);
+
+    if (parsed.origin === pageOrigin && parsed.pathname.startsWith(proxyPrefix + '/')) {
+      return parsed.toString();
+    }
+
+    if (isLocalHost(parsed.hostname)) {
+      return buildProxyUrl(parsed).toString();
+    }
+
+    if (parsed.origin === pageOrigin) {
+      return new URL(proxyBase + parsed.pathname + parsed.search + parsed.hash, pageOrigin).toString();
+    }
+
+    return parsed.toString();
+  };
+
+  const normalizeWebSocketToProxy = (input) => {
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.toString() : String(input || '');
+    let parsed;
+    try {
+      parsed = new URL(raw, window.location.href);
+    } catch {
+      return raw;
+    }
+
+    if (parsed.pathname.startsWith('/browser-ws/')) {
+      return parsed.toString();
+    }
+
+    if (isLocalHost(parsed.hostname)) {
+      const targetPort = parsed.port || (parsed.protocol === 'wss:' ? '443' : '80');
+      const proxied = new URL('/browser-ws/' + parsed.hostname + ':' + targetPort + parsed.pathname + parsed.search + parsed.hash, pageOrigin);
+      if (authToken) {
+        proxied.searchParams.set('token', authToken);
+      }
+      return proxied.toString();
+    }
+
+    if (parsed.origin === pageOrigin) {
+      const proxied = new URL('/browser-ws/' + config.hostport + parsed.pathname + parsed.search + parsed.hash, pageOrigin);
+      if (authToken) {
+        proxied.searchParams.set('token', authToken);
+      }
+      return proxied.toString();
+    }
+
+    return parsed.toString();
+  };
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    if (typeof input === 'string' || input instanceof URL) {
+      return originalFetch(normalizeToProxy(input), init);
+    }
+
+    if (input instanceof Request) {
+      const proxiedUrl = normalizeToProxy(input.url);
+      if (proxiedUrl === input.url) {
+        return originalFetch(input, init);
+      }
+      return originalFetch(new Request(proxiedUrl, input), init);
+    }
+
+    return originalFetch(input, init);
+  };
+
+  const originalOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    return originalOpen.call(this, method, normalizeToProxy(url), ...rest);
+  };
+
+  const OriginalWebSocket = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    url = normalizeWebSocketToProxy(url);
+    return protocols === undefined ? new OriginalWebSocket(url) : new OriginalWebSocket(url, protocols);
+  };
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+  Object.defineProperty(window.WebSocket, 'CONNECTING', { value: OriginalWebSocket.CONNECTING });
+  Object.defineProperty(window.WebSocket, 'OPEN', { value: OriginalWebSocket.OPEN });
+  Object.defineProperty(window.WebSocket, 'CLOSING', { value: OriginalWebSocket.CLOSING });
+  Object.defineProperty(window.WebSocket, 'CLOSED', { value: OriginalWebSocket.CLOSED });
+
+  if (typeof window.EventSource === 'function') {
+    const OriginalEventSource = window.EventSource;
+    window.EventSource = function(url, configArg) {
+      return new OriginalEventSource(normalizeToProxy(url), configArg);
+    };
+    window.EventSource.prototype = OriginalEventSource.prototype;
+  }
+})();
+</script>`;
+}
 
 function rewriteHtml(html, proxyBase) {
   // Inject <base> tag so all relative paths resolve through the proxy
@@ -13,6 +163,13 @@ function rewriteHtml(html, proxyBase) {
   if (result === html) {
     // No <head> tag found — prepend base tag
     result = `<base href="${proxyBase}">` + html;
+  }
+
+  const hostport = proxyBase.slice((`${PROXY_PREFIX}/`).length, -1);
+  const runtimeShim = buildRuntimeShim(hostport, proxyBase);
+  result = result.replace(/(<head[^>]*>.*?<base[^>]*>)/is, `$1${runtimeShim}`);
+  if (!result.includes(runtimeShim)) {
+    result = runtimeShim + result;
   }
 
   // Rewrite absolute paths (e.g. href="/path", src="/img.png")

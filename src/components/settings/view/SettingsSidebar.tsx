@@ -1,4 +1,4 @@
-import { Bell, Bot, GitBranch, Info, Key, Link, ListChecks, Palette, Puzzle, ScrollText, Users } from 'lucide-react';
+import { Bell, Bot, GitBranch, Globe, Info, Key, Link, ListChecks, Palette, Puzzle, ScrollText, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '../../../lib/utils';
@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'api', labelKey: 'mainTabs.apiTokens', icon: Key },
   { id: 'tasks', labelKey: 'mainTabs.tasks', icon: ListChecks },
   { id: 'plugins', labelKey: 'mainTabs.plugins', icon: Puzzle },
+  { id: 'projects', labelKey: 'mainTabs.projectRouting', label: 'Project Routing', icon: Globe },
   { id: 'notifications', labelKey: 'mainTabs.notifications', icon: Bell },
   { id: 'users', label: '用户管理', icon: Users, adminOnly: true },
   { id: 'logs', label: '使用日志', icon: ScrollText, adminOnly: true },
@@ -58,7 +59,7 @@ export default function SettingsSidebar({ activeTab, onChange, isAdmin = false }
                 )}
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
-                {item.labelKey ? t(item.labelKey) : item.label}
+                {item.labelKey ? t(item.labelKey, { defaultValue: item.label }) : item.label}
               </button>
             );
           })}
@@ -79,7 +80,7 @@ export default function SettingsSidebar({ activeTab, onChange, isAdmin = false }
                 className="flex-shrink-0"
               >
                 <Icon className="h-3.5 w-3.5" />
-                {item.labelKey ? t(item.labelKey) : item.label}
+                {item.labelKey ? t(item.labelKey, { defaultValue: item.label }) : item.label}
               </Pill>
             );
           })}

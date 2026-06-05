@@ -1,6 +1,11 @@
 import express from 'express';
 
-import { createProject, updateProjectDisplayName } from '@/modules/projects/services/project-management.service.js';
+import {
+  createProject,
+  updateProjectDisplayName,
+  updateProjectRouting,
+  updateProjectPreviewPorts,
+} from '@/modules/projects/services/project-management.service.js';
 import { startCloneProject } from '@/modules/projects/services/project-clone.service.js';
 import { getProjectTaskMaster } from '@/modules/projects/services/projects-has-taskmaster.service.js';
 import { AppError, asyncHandler, createApiSuccessResponse } from '@/shared/utils.js';
@@ -68,6 +73,22 @@ function readOptionalNumericQueryValue(value: unknown): number | null {
   return Number.isNaN(parsedValue) ? null : parsedValue;
 }
 
+function readOptionalPortValue(value: unknown): number | null {
+  const port = readOptionalNumericQueryValue(value);
+  if (port === null) {
+    return null;
+  }
+
+  if (port < 1 || port > 65535) {
+    throw new AppError('Port must be between 1 and 65535', {
+      code: 'INVALID_PORT_VALUE',
+      statusCode: 400,
+    });
+  }
+
+  return port;
+}
+
 function parseNonNegativeIntQuery(value: unknown, name: string, fallback: number): number {
   const rawValue = readQueryStringValue(value).trim();
   if (!rawValue) {
@@ -133,6 +154,8 @@ router.post(
     const requestBody = req.body as Record<string, unknown>;
     const projectPath = typeof requestBody.path === 'string' ? requestBody.path : '';
     const customName = typeof requestBody.customName === 'string' ? requestBody.customName : null;
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
 
     if (requestBody.workspaceType !== undefined) {
       throw new AppError('workspaceType is no longer supported. Use the single create-project flow.', {
@@ -154,6 +177,8 @@ router.post(
       username: getAuthenticatedUsername(req),
       projectPath,
       customName,
+      previewProdPort,
+      previewDevPort,
     });
 
     res.json({
@@ -258,17 +283,54 @@ router.get(
   }),
 );
 
-router.put('/:projectId/rename', (req, res) => {
-  try {
+router.put(
+  '/:projectId/rename',
+  asyncHandler(async (req, res) => {
     const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const { displayName } = req.body as { displayName?: unknown };
     updateProjectDisplayName(userId, projectId, displayName);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to rename project' });
-  }
-});
+  }),
+);
+
+router.put(
+  '/:projectId/preview-ports',
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
+    const requestBody = req.body as Record<string, unknown>;
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
+
+    updateProjectPreviewPorts(userId, projectId, previewProdPort, previewDevPort);
+    res.json({
+      success: true,
+      previewProdPort,
+      previewDevPort,
+    });
+  }),
+);
+
+router.put(
+  '/:projectId/preview-routing',
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
+    const requestBody = req.body as Record<string, unknown>;
+    const displayName = typeof requestBody.displayName === 'string' ? requestBody.displayName : '';
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
+
+    updateProjectRouting(userId, projectId, displayName, previewProdPort, previewDevPort);
+    res.json({
+      success: true,
+      displayName,
+      previewProdPort,
+      previewDevPort,
+    });
+  }),
+);
 
 router.post(
   '/:projectId/toggle-star',

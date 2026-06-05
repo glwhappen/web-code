@@ -97,6 +97,7 @@
     "tasks": "任务",
     "notifications": "通知",
     "plugins": "插件",
+    "projectRouting": "域名与端口",
     "about": "关于"
   },
   "notifications": {
@@ -151,6 +152,54 @@
         "label": "字体大小",
         "description": "编辑器字体大小（px）"
       }
+    }
+  },
+  "projectPreviewPorts": {
+    "title": "项目预览端口",
+    "description": "把每个项目的子域名映射到生产和开发预览服务使用的端口。",
+    "emptyState": "先创建一个项目，再来配置预览端口。",
+    "prodPort": "生产端口",
+    "devPort": "开发端口",
+    "prodHint": "对应 `project.code.glwsq.cn`",
+    "devHint": "对应 `project_dev.code.glwsq.cn`",
+    "portPlaceholder": "例如 10003",
+    "validation": {
+      "invalidPort": "端口必须在 1 到 65535 之间"
+    },
+    "actions": {
+      "save": "保存端口",
+      "saving": "保存中..."
+    },
+    "status": {
+      "saved": "已保存"
+    }
+  },
+  "projectRouting": {
+    "title": "域名与端口",
+    "description": "为每个项目配置用于预览的域名别名，以及生产/开发环境对应的端口。",
+    "emptyState": "先创建一个项目，再来配置域名与端口。",
+    "displayName": "项目域名别名",
+    "displayNamePlaceholder": "例如 test",
+    "displayNameHint": "这个值会映射为 `test.code.glwsq.cn`，同时也会影响左侧显示名称。",
+    "hostnamePreview": "当前预览域名：{{host}}",
+    "prodPort": "生产端口",
+    "devPort": "开发端口",
+    "prodHint": "对应 `test.code.glwsq.cn`",
+    "devHint": "对应 `test_dev.code.glwsq.cn`",
+    "portPlaceholder": "例如 10003",
+    "validation": {
+      "invalidPort": "端口必须在 1 到 65535 之间",
+      "samePorts": "生产端口和开发端口不能相同",
+      "duplicateDomain": "域名别名已被项目“{{project}}”占用",
+      "duplicatePort": "端口 {{port}} 已被项目“{{project}}”占用"
+    },
+    "actions": {
+      "save": "保存映射",
+      "saving": "保存中..."
+    },
+    "status": {
+      "saved": "已保存",
+      "error": "保存失败"
     }
   },
   "mcpForm": {
