@@ -223,5 +223,7 @@ export const normalizeProjectForSettings = (project: Project): SettingsProject =
       typeof project.path === 'string' && project.path.length > 0
         ? project.path
         : fallbackPath,
+    previewProdPort: typeof project.previewProdPort === 'number' ? project.previewProdPort : null,
+    previewDevPort: typeof project.previewDevPort === 'number' ? project.previewDevPort : null,
   };
 };

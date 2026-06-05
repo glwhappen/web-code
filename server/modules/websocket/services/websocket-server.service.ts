@@ -2,8 +2,10 @@ import type { Server as HttpServer } from 'node:http';
 
 import { WebSocketServer, type VerifyClientCallbackSync } from 'ws';
 
+import { handleBrowserWsProxy } from '@/modules/websocket/services/browser-websocket-proxy.service.js';
 import { handleChatConnection } from '@/modules/websocket/services/chat-websocket.service.js';
 import { verifyWebSocketClient } from '@/modules/websocket/services/websocket-auth.service.js';
+import { proxyProjectPreviewWebSocket } from '@/modules/projects/index.js';
 import { handlePluginWsProxy } from '@/modules/websocket/services/plugin-websocket-proxy.service.js';
 import { handleShellConnection } from '@/modules/websocket/services/shell-websocket.service.js';
 import type { AuthenticatedWebSocketRequest } from '@/shared/types.js';
@@ -47,6 +49,15 @@ export function createWebSocketServer(
 
     if (pathname.startsWith('/plugin-ws/')) {
       handlePluginWsProxy(ws, pathname, dependencies.getPluginPort);
+      return;
+    }
+
+    if (pathname.startsWith('/browser-ws/')) {
+      handleBrowserWsProxy(ws, url);
+      return;
+    }
+
+    if (proxyProjectPreviewWebSocket(ws, url, String(request.headers.host ?? ''), request.headers as Record<string, string | string[] | undefined>)) {
       return;
     }
 

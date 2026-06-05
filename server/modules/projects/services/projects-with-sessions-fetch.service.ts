@@ -30,6 +30,8 @@ export type ProjectListItem = {
   displayName: string;
   fullPath: string;
   isStarred: boolean;
+  previewProdPort?: number | null;
+  previewDevPort?: number | null;
   sessions: SessionSummary[];
   cursorSessions: SessionSummary[];
   codexSessions: SessionSummary[];
@@ -71,6 +73,8 @@ type ProjectSessionsPageResult = {
 
 export type ProjectSessionsPageApiView = {
   projectId: string;
+  previewProdPort?: number | null;
+  previewDevPort?: number | null;
   sessions: SessionSummary[];
   cursorSessions: SessionSummary[];
   codexSessions: SessionSummary[];
@@ -222,6 +226,8 @@ export async function getProjectsWithSessions(
     project_path: string;
     custom_project_name?: string | null;
     isStarred?: number;
+    preview_prod_port?: number | null;
+    preview_dev_port?: number | null;
   }>;
   const totalProjects = projectRows.length;
   const projects: ProjectListItem[] = [];
@@ -256,6 +262,8 @@ export async function getProjectsWithSessions(
       displayName,
       fullPath: projectPath,
       isStarred: Boolean(row.isStarred),
+      previewProdPort: row.preview_prod_port ?? null,
+      previewDevPort: row.preview_dev_port ?? null,
       sessions: sessionsPage.sessionsByProvider.claude,
       cursorSessions: sessionsPage.sessionsByProvider.cursor,
       codexSessions: sessionsPage.sessionsByProvider.codex,
@@ -295,6 +303,8 @@ export async function getArchivedProjectsWithSessions(
     project_path: string;
     custom_project_name?: string | null;
     isStarred?: number;
+    preview_prod_port?: number | null;
+    preview_dev_port?: number | null;
   }>;
 
   const archivedProjects: ArchivedProjectListItem[] = [];
@@ -313,6 +323,8 @@ export async function getArchivedProjectsWithSessions(
       displayName,
       fullPath: row.project_path,
       isStarred: Boolean(row.isStarred),
+      previewProdPort: row.preview_prod_port ?? null,
+      previewDevPort: row.preview_dev_port ?? null,
       isArchived: true,
       sessions: sessionsPage.sessionsByProvider.claude,
       cursorSessions: sessionsPage.sessionsByProvider.cursor,
@@ -348,6 +360,8 @@ export async function getProjectSessionsPage(
   const sessionsPage = readProjectSessionsPageByPath(userId, projectRow.project_path, options);
   return {
     projectId: projectRow.project_id,
+    previewProdPort: projectRow.preview_prod_port ?? null,
+    previewDevPort: projectRow.preview_dev_port ?? null,
     sessions: sessionsPage.sessionsByProvider.claude,
     cursorSessions: sessionsPage.sessionsByProvider.cursor,
     codexSessions: sessionsPage.sessionsByProvider.codex,
