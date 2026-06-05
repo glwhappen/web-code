@@ -81,6 +81,7 @@ export type SettingsProject = {
   displayName: string;
   fullPath: string;
   path?: string;
+  projectHostAlias?: string | null;
   previewProdPort?: number | null;
   previewDevPort?: number | null;
 };

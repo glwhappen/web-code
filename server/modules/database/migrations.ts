@@ -99,6 +99,7 @@ const migrateLegacyWorkspaceTableIntoProjects = (db: Database): void => {
       user_id,
       project_path,
       custom_project_name,
+      project_host_alias,
       preview_prod_port,
       preview_dev_port,
       isStarred,
@@ -116,6 +117,7 @@ const migrateLegacyWorkspaceTableIntoProjects = (db: Database): void => {
       ),
       workspace_path,
       custom_workspace_name,
+      NULL,
       NULL,
       NULL,
       COALESCE(isStarred, 0),
@@ -147,6 +149,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
 
   if (!shouldRebuild) {
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'custom_project_name', 'TEXT DEFAULT NULL');
+    addColumnToTableIfNotExists(db, 'projects', columnNames, 'project_host_alias', 'TEXT DEFAULT NULL');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'preview_prod_port', 'INTEGER DEFAULT NULL');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'preview_dev_port', 'INTEGER DEFAULT NULL');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'isStarred', 'BOOLEAN DEFAULT 0');
@@ -199,6 +202,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id INTEGER NOT NULL,
         project_path TEXT NOT NULL,
         custom_project_name TEXT DEFAULT NULL,
+        project_host_alias TEXT DEFAULT NULL,
         preview_prod_port INTEGER DEFAULT NULL,
         preview_dev_port INTEGER DEFAULT NULL,
         isStarred BOOLEAN DEFAULT 0,
@@ -213,6 +217,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           ${userIdExpression} AS user_id,
           ${projectPathExpression} AS project_path,
           ${customProjectNameExpression} AS custom_project_name,
+          NULL AS project_host_alias,
           NULL AS preview_prod_port,
           NULL AS preview_dev_port,
           ${isStarredExpression} AS isStarred,
@@ -227,6 +232,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           user_id,
           project_path,
           custom_project_name,
+          project_host_alias,
           preview_prod_port,
           preview_dev_port,
           isStarred,
@@ -246,6 +252,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           user_id,
           project_path,
           custom_project_name,
+          project_host_alias,
           preview_prod_port,
           preview_dev_port,
           isStarred,
@@ -258,6 +265,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id,
         project_path,
         custom_project_name,
+        project_host_alias,
         preview_prod_port,
         preview_dev_port,
         isStarred,
@@ -268,6 +276,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id,
         project_path,
         custom_project_name,
+        project_host_alias,
         preview_prod_port,
         preview_dev_port,
         isStarred,

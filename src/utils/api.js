@@ -129,10 +129,10 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ displayName }),
     }),
-  updateProjectRouting: (projectId, displayName, previewProdPort, previewDevPort) =>
+  updateProjectRouting: (projectId, projectHostAlias, previewProdPort, previewDevPort) =>
     authenticatedFetch(`/api/projects/${encodeURIComponent(projectId)}/preview-routing`, {
       method: 'PUT',
-      body: JSON.stringify({ displayName, previewProdPort, previewDevPort }),
+      body: JSON.stringify({ projectHostAlias, previewProdPort, previewDevPort }),
     }),
   updateProjectPreviewPorts: (projectId, previewProdPort, previewDevPort) =>
     authenticatedFetch(`/api/projects/${encodeURIComponent(projectId)}/preview-ports`, {

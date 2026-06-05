@@ -454,6 +454,7 @@ export type ProjectRepositoryRow = {
   project_id: string;
   project_path: string;
   custom_project_name: string | null;
+  project_host_alias: string | null;
   isStarred: number;
   isArchived: number;
   preview_prod_port?: number | null;

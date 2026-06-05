@@ -46,6 +46,7 @@ const projectsHaveChanges = (
       nextProject.projectId !== prevProject.projectId ||
       nextProject.displayName !== prevProject.displayName ||
       nextProject.fullPath !== prevProject.fullPath ||
+      nextProject.projectHostAlias !== prevProject.projectHostAlias ||
       nextProject.previewProdPort !== prevProject.previewProdPort ||
       nextProject.previewDevPort !== prevProject.previewDevPort ||
       Boolean(nextProject.isStarred) !== Boolean(prevProject.isStarred) ||
@@ -423,9 +424,12 @@ export function useProjectsState({
     }
 
     const matchedProject = projects.find(
-      (project) =>
-        projectDisplayNameToHostLabel(project.displayName, project.path || project.fullPath || '') ===
-        projectHostInfo.projectLabel,
+      (project) => {
+        const hostLabel = project.projectHostAlias
+          ? project.projectHostAlias
+          : projectDisplayNameToHostLabel(project.displayName, project.path || project.fullPath || '');
+        return hostLabel === projectHostInfo.projectLabel;
+      },
     );
 
     if (!matchedProject) {
