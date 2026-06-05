@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS projects (
     user_id INTEGER NOT NULL,
     project_path TEXT NOT NULL,
     custom_project_name TEXT DEFAULT NULL,
+    project_host_alias TEXT DEFAULT NULL,
     preview_prod_port INTEGER DEFAULT NULL,
     preview_dev_port INTEGER DEFAULT NULL,
     isStarred BOOLEAN DEFAULT 0,

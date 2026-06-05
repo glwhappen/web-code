@@ -42,6 +42,15 @@ function resolveProjectDisplayName(project: ProjectRepositoryRow): string {
   return path.basename(project.project_path) || project.project_path;
 }
 
+function resolveProjectHostLabel(project: ProjectRepositoryRow): string {
+  const trimmedAlias = typeof project.project_host_alias === 'string' ? project.project_host_alias.trim() : '';
+  if (trimmedAlias.length > 0) {
+    return trimmedAlias;
+  }
+
+  return projectDisplayNameToHostLabel(resolveProjectDisplayName(project), project.project_path);
+}
+
 function rewriteSetCookieHeaders(headers: string[] | string | number | undefined): string[] | undefined {
   if (!headers) {
     return undefined;
@@ -88,8 +97,7 @@ function resolveProjectTarget(hostname: string): ProjectPreviewTarget | null {
 
   const projectRows = projectsDb.getAllActiveProjectPaths();
   const project = projectRows.find((projectRow) => {
-    const displayName = resolveProjectDisplayName(projectRow);
-    return projectDisplayNameToHostLabel(displayName, projectRow.project_path) === hostInfo.projectLabel;
+    return resolveProjectHostLabel(projectRow) === hostInfo.projectLabel;
   });
 
   if (!project) {

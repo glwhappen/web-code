@@ -45,27 +45,30 @@ export const projectsDb = {
         const normalizedProjectName = normalizeProjectDisplayName(normalizedProjectPath, customProjectName);
         const attemptedId = randomUUID();
         const row = db.prepare(`
-        INSERT INTO projects (
+            INSERT INTO projects (
             project_id,
             user_id,
             project_path,
             custom_project_name,
+            project_host_alias,
             preview_prod_port,
             preview_dev_port,
             isArchived
         )
-            VALUES (?, ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
             ON CONFLICT(user_id, project_path) DO UPDATE SET
             isArchived = 0,
+            project_host_alias = COALESCE(excluded.project_host_alias, projects.project_host_alias),
             preview_prod_port = COALESCE(excluded.preview_prod_port, projects.preview_prod_port),
             preview_dev_port = COALESCE(excluded.preview_dev_port, projects.preview_dev_port)
             WHERE projects.isArchived = 1
-            RETURNING project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            RETURNING project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
         `).get(
             attemptedId,
             userId,
             normalizedProjectPath,
             normalizedProjectName,
+            null,
             normalizePreviewPort(previewProdPort),
             normalizePreviewPort(previewDevPort),
         ) as ProjectRepositoryRow | undefined;
@@ -88,7 +91,7 @@ export const projectsDb = {
         const db = getConnection();
         const normalizedProjectPath = normalizeProjectPath(projectPath);
         const row = db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
             WHERE user_id = ? AND project_path = ?
         `).get(userId, normalizedProjectPath) as ProjectRepositoryRow | undefined;
@@ -99,7 +102,7 @@ export const projectsDb = {
     getProjectById(userId: number, projectId: string): ProjectRepositoryRow | null {
         const db = getConnection();
         const row = db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
             WHERE user_id = ? AND project_id = ?
         `).get(userId, projectId) as ProjectRepositoryRow | undefined;
@@ -129,7 +132,7 @@ export const projectsDb = {
     getProjectPaths(userId: number): ProjectRepositoryRow[] {
         const db = getConnection();
         return db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
             WHERE user_id = ? AND isArchived = 0
         `).all(userId) as ProjectRepositoryRow[];
@@ -138,7 +141,7 @@ export const projectsDb = {
     getAllProjectPaths(): ProjectRepositoryRow[] {
         const db = getConnection();
         return db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
         `).all() as ProjectRepositoryRow[];
     },
@@ -146,7 +149,7 @@ export const projectsDb = {
     getAllActiveProjectPaths(): ProjectRepositoryRow[] {
         const db = getConnection();
         return db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
             WHERE isArchived = 0
         `).all() as ProjectRepositoryRow[];
@@ -159,7 +162,7 @@ export const projectsDb = {
     getArchivedProjectPaths(userId: number): ProjectRepositoryRow[] {
         const db = getConnection();
         return db.prepare(`
-            SELECT project_id, project_path, custom_project_name, preview_prod_port, preview_dev_port, isStarred, isArchived
+            SELECT project_id, project_path, custom_project_name, project_host_alias, preview_prod_port, preview_dev_port, isStarred, isArchived
             FROM projects
             WHERE user_id = ? AND isArchived = 1
         `).all(userId) as ProjectRepositoryRow[];
@@ -208,17 +211,17 @@ export const projectsDb = {
     updateProjectRoutingById(
         userId: number,
         projectId: string,
-        customProjectName: string | null,
+        projectHostAlias: string | null,
         previewProdPort: number | null,
         previewDevPort: number | null,
     ): void {
         const db = getConnection();
         db.prepare(`
             UPDATE projects
-            SET custom_project_name = ?, preview_prod_port = ?, preview_dev_port = ?
+            SET project_host_alias = ?, preview_prod_port = ?, preview_dev_port = ?
             WHERE user_id = ? AND project_id = ?
         `).run(
-            customProjectName,
+            projectHostAlias,
             normalizePreviewPort(previewProdPort),
             normalizePreviewPort(previewDevPort),
             userId,

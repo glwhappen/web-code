@@ -176,11 +176,11 @@
   },
   "projectRouting": {
     "title": "Domains & Ports",
-    "description": "Configure the hostname alias for each project, plus the ports used by its production and development preview servers.",
+    "description": "Configure a separate hostname alias for each project, plus the ports used by its production and development preview servers.",
     "emptyState": "Create a project first to configure its domain and ports.",
-    "displayName": "Project Domain Alias",
-    "displayNamePlaceholder": "e.g. test",
-    "displayNameHint": "This value maps to `test.code.glwsq.cn` and also affects the label shown in the sidebar.",
+    "hostAlias": "Hostname Alias",
+    "hostAliasPlaceholder": "e.g. test",
+    "hostAliasHint": "This maps to `test.code.glwsq.cn`. Leave it blank to fall back to the project-name slug.",
     "hostnamePreview": "Preview hostname: {{host}}",
     "prodPort": "Production Port",
     "devPort": "Development Port",
@@ -188,6 +188,7 @@
     "devHint": "Used by `test_dev.code.glwsq.cn`",
     "portPlaceholder": "e.g. 10003",
     "validation": {
+      "invalidAlias": "The hostname alias can only contain letters, numbers, and hyphens",
       "invalidPort": "Port must be between 1 and 65535",
       "samePorts": "Production and development ports must not be the same",
       "duplicateDomain": "Domain alias is already used by project “{{project}}”",

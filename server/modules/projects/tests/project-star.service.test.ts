@@ -9,6 +9,7 @@ type ProjectRow = {
   project_id: string;
   project_path: string;
   custom_project_name: string | null;
+  project_host_alias: string | null;
   isStarred: number;
   isArchived: number;
 };
@@ -55,6 +56,7 @@ test('toggleProjectStar flips star state and persists it', () => {
         project_id: 'project-1',
         project_path: '/workspace/project-1',
         custom_project_name: 'project-1',
+        project_host_alias: null,
         isStarred: 0,
         isArchived: 0,
       }) as ProjectRow;
@@ -89,6 +91,7 @@ test('applyLegacyStarredProjectIds stars only valid, unstarred projects', () => 
           project_id: 'project-a',
           project_path: '/workspace/project-a',
           custom_project_name: 'A',
+          project_host_alias: null,
           isStarred: 0,
           isArchived: 0,
         } as ProjectRow;
@@ -99,6 +102,7 @@ test('applyLegacyStarredProjectIds stars only valid, unstarred projects', () => 
           project_id: 'project-b',
           project_path: '/workspace/project-b',
           custom_project_name: 'B',
+          project_host_alias: null,
           isStarred: 1,
           isArchived: 0,
         } as ProjectRow;

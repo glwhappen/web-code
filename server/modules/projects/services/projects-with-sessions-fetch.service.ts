@@ -30,6 +30,7 @@ export type ProjectListItem = {
   displayName: string;
   fullPath: string;
   isStarred: boolean;
+  projectHostAlias?: string | null;
   previewProdPort?: number | null;
   previewDevPort?: number | null;
   sessions: SessionSummary[];
@@ -73,6 +74,7 @@ type ProjectSessionsPageResult = {
 
 export type ProjectSessionsPageApiView = {
   projectId: string;
+  projectHostAlias?: string | null;
   previewProdPort?: number | null;
   previewDevPort?: number | null;
   sessions: SessionSummary[];
@@ -225,6 +227,7 @@ export async function getProjectsWithSessions(
     project_id: string;
     project_path: string;
     custom_project_name?: string | null;
+    project_host_alias?: string | null;
     isStarred?: number;
     preview_prod_port?: number | null;
     preview_dev_port?: number | null;
@@ -261,6 +264,7 @@ export async function getProjectsWithSessions(
       path: projectPath,
       displayName,
       fullPath: projectPath,
+      projectHostAlias: row.project_host_alias ?? null,
       isStarred: Boolean(row.isStarred),
       previewProdPort: row.preview_prod_port ?? null,
       previewDevPort: row.preview_dev_port ?? null,
@@ -302,6 +306,7 @@ export async function getArchivedProjectsWithSessions(
     project_id: string;
     project_path: string;
     custom_project_name?: string | null;
+    project_host_alias?: string | null;
     isStarred?: number;
     preview_prod_port?: number | null;
     preview_dev_port?: number | null;
@@ -322,6 +327,7 @@ export async function getArchivedProjectsWithSessions(
       path: row.project_path,
       displayName,
       fullPath: row.project_path,
+      projectHostAlias: row.project_host_alias ?? null,
       isStarred: Boolean(row.isStarred),
       previewProdPort: row.preview_prod_port ?? null,
       previewDevPort: row.preview_dev_port ?? null,
@@ -361,6 +367,7 @@ export async function getProjectSessionsPage(
   return {
     projectId: projectRow.project_id,
     previewProdPort: projectRow.preview_prod_port ?? null,
+    projectHostAlias: projectRow.project_host_alias ?? null,
     previewDevPort: projectRow.preview_dev_port ?? null,
     sessions: sessionsPage.sessionsByProvider.claude,
     cursorSessions: sessionsPage.sessionsByProvider.cursor,

@@ -2,7 +2,7 @@ import { Check, Globe, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { projectDisplayNameToHostLabel } from '../../../../../shared/projectHosts.js';
+import { normalizeProjectHostLabel, projectDisplayNameToHostLabel } from '../../../../../shared/projectHosts.js';
 import { Button, Input } from '../../../../shared/view/ui';
 import { api } from '../../../../utils/api';
 import SettingsCard from '../SettingsCard';
@@ -10,7 +10,7 @@ import SettingsSection from '../SettingsSection';
 import type { SettingsProject } from '../../../sidebar/types/types';
 
 type ProjectRoutingDraft = {
-  displayName: string;
+  projectHostAlias: string;
   previewProdPort: string;
   previewDevPort: string;
 };
@@ -38,17 +38,19 @@ function normalizePortInput(value: string): number | null {
   return parsed;
 }
 
-function normalizeDisplayName(value: string): string {
-  return value.trim();
+function normalizeHostAliasInput(value: string): string | null {
+  const normalized = normalizeProjectHostLabel(value);
+  return normalized.length > 0 ? normalized : null;
 }
 
-function getProjectHostLabel(project: SettingsProject, displayName?: string): string {
-  const resolvedDisplayName =
-    typeof displayName === 'string' && displayName.trim().length > 0
-      ? displayName.trim()
-      : project.displayName || project.name;
+function resolveProjectHostLabel(project: SettingsProject, projectHostAlias?: string | null): string {
+  const normalizedAlias = normalizeHostAliasInput(projectHostAlias ?? '');
+  if (normalizedAlias) {
+    return normalizedAlias;
+  }
+
   const fallbackPath = project.fullPath || project.path || project.name;
-  return projectDisplayNameToHostLabel(resolvedDisplayName, fallbackPath);
+  return projectDisplayNameToHostLabel(project.displayName || project.name, fallbackPath);
 }
 
 async function readErrorMessage(response: Response, fallbackMessage: string): Promise<string> {
@@ -85,7 +87,7 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
     const nextDrafts: Record<string, ProjectRoutingDraft> = {};
     for (const project of projects) {
       nextDrafts[project.name] = {
-        displayName: project.displayName || project.name,
+        projectHostAlias: typeof project.projectHostAlias === 'string' ? project.projectHostAlias : '',
         previewProdPort: typeof project.previewProdPort === 'number' ? String(project.previewProdPort) : '',
         previewDevPort: typeof project.previewDevPort === 'number' ? String(project.previewDevPort) : '',
       };
@@ -103,7 +105,7 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
     setDrafts((prev) => ({
       ...prev,
       [projectId]: {
-        displayName: prev[projectId]?.displayName ?? '',
+        projectHostAlias: prev[projectId]?.projectHostAlias ?? '',
         previewProdPort: prev[projectId]?.previewProdPort ?? '',
         previewDevPort: prev[projectId]?.previewDevPort ?? '',
         [key]: value,
@@ -111,16 +113,23 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
     }));
   };
 
-  const validateProjectDraft = (project: SettingsProject): string | null => {
-    const draft = drafts[project.name] ?? {
-      displayName: project.displayName || project.name,
+  const getDraft = (project: SettingsProject): ProjectRoutingDraft => (
+    drafts[project.name] ?? {
+      projectHostAlias: typeof project.projectHostAlias === 'string' ? project.projectHostAlias : '',
       previewProdPort: typeof project.previewProdPort === 'number' ? String(project.previewProdPort) : '',
       previewDevPort: typeof project.previewDevPort === 'number' ? String(project.previewDevPort) : '',
-    };
+    }
+  );
 
-    const normalizedDisplayName = normalizeDisplayName(draft.displayName) || project.displayName || project.name;
+  const validateProjectDraft = (project: SettingsProject): string | null => {
+    const draft = getDraft(project);
+    const normalizedHostAlias = normalizeHostAliasInput(draft.projectHostAlias);
     const previewProdPort = normalizePortInput(draft.previewProdPort);
     const previewDevPort = normalizePortInput(draft.previewDevPort);
+
+    if (draft.projectHostAlias.trim() && !normalizedHostAlias) {
+      return t('projectRouting.validation.invalidAlias');
+    }
 
     if (Number.isNaN(previewProdPort) || Number.isNaN(previewDevPort)) {
       return t('projectRouting.validation.invalidPort');
@@ -130,19 +139,17 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
       return t('projectRouting.validation.samePorts');
     }
 
-    const desiredLabel = getProjectHostLabel(project, normalizedDisplayName);
+    const desiredLabel = resolveProjectHostLabel(project, normalizedHostAlias);
     for (const otherProject of sortedProjects) {
       if (otherProject.name === project.name) {
         continue;
       }
 
-      const otherDraft = drafts[otherProject.name] ?? {
-        displayName: otherProject.displayName || otherProject.name,
-        previewProdPort: typeof otherProject.previewProdPort === 'number' ? String(otherProject.previewProdPort) : '',
-        previewDevPort: typeof otherProject.previewDevPort === 'number' ? String(otherProject.previewDevPort) : '',
-      };
-      const otherDisplayName = normalizeDisplayName(otherDraft.displayName) || otherProject.displayName || otherProject.name;
-      const otherLabel = getProjectHostLabel(otherProject, otherDisplayName);
+      const otherDraft = getDraft(otherProject);
+      const otherLabel = resolveProjectHostLabel(
+        otherProject,
+        normalizeHostAliasInput(otherDraft.projectHostAlias),
+      );
       if (otherLabel === desiredLabel) {
         return t('projectRouting.validation.duplicateDomain', {
           project: otherProject.displayName || otherProject.name,
@@ -193,12 +200,8 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
       return;
     }
 
-    const draft = drafts[project.name] ?? {
-      displayName: project.displayName || project.name,
-      previewProdPort: typeof project.previewProdPort === 'number' ? String(project.previewProdPort) : '',
-      previewDevPort: typeof project.previewDevPort === 'number' ? String(project.previewDevPort) : '',
-    };
-    const displayName = normalizeDisplayName(draft.displayName) || project.displayName || project.name;
+    const draft = getDraft(project);
+    const projectHostAlias = normalizeHostAliasInput(draft.projectHostAlias);
     const previewProdPort = normalizePortInput(draft.previewProdPort);
     const previewDevPort = normalizePortInput(draft.previewDevPort);
 
@@ -208,7 +211,7 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
     }));
 
     try {
-      const response = await api.updateProjectRouting(project.name, displayName, previewProdPort, previewDevPort);
+      const response = await api.updateProjectRouting(project.name, projectHostAlias, previewProdPort, previewDevPort);
       if (!response.ok) {
         const errorMessage = await readErrorMessage(response, t('projectRouting.status.error'));
         throw new Error(errorMessage);
@@ -254,13 +257,9 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
     >
       <SettingsCard divided>
         {sortedProjects.map((project) => {
-          const draft = drafts[project.name] ?? {
-            displayName: project.displayName || project.name,
-            previewProdPort: typeof project.previewProdPort === 'number' ? String(project.previewProdPort) : '',
-            previewDevPort: typeof project.previewDevPort === 'number' ? String(project.previewDevPort) : '',
-          };
+          const draft = getDraft(project);
           const saveState = saveStates[project.name] ?? { kind: 'idle' as const };
-          const hostLabel = getProjectHostLabel(project, normalizeDisplayName(draft.displayName) || project.displayName || project.name);
+          const effectiveHostLabel = resolveProjectHostLabel(project, draft.projectHostAlias);
 
           return (
             <div key={project.name} className="space-y-4 px-4 py-4">
@@ -273,22 +272,22 @@ export default function ProjectRoutingTab({ projects }: ProjectRoutingTabProps) 
                   {project.fullPath || project.path || project.name}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {t('projectRouting.hostnamePreview', { host: `${hostLabel}.code.glwsq.cn` })}
+                  {t('projectRouting.hostnamePreview', { host: `${effectiveHostLabel}.code.glwsq.cn` })}
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor={`display-name-${project.name}`} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  {t('projectRouting.displayName')}
+                <label htmlFor={`host-alias-${project.name}`} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  {t('projectRouting.hostAlias')}
                 </label>
                 <Input
-                  id={`display-name-${project.name}`}
-                  value={draft.displayName}
-                  onChange={(event) => updateDraft(project.name, 'displayName', event.target.value)}
-                  placeholder={t('projectRouting.displayNamePlaceholder')}
+                  id={`host-alias-${project.name}`}
+                  value={draft.projectHostAlias}
+                  onChange={(event) => updateDraft(project.name, 'projectHostAlias', event.target.value)}
+                  placeholder={t('projectRouting.hostAliasPlaceholder')}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  {t('projectRouting.displayNameHint')}
+                  {t('projectRouting.hostAliasHint')}
                 </p>
               </div>
 
