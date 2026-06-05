@@ -13,6 +13,7 @@ const projectRow = {
   project_id: 'project-1',
   project_path: '/workspace/tester/my-project',
   custom_project_name: 'my-project',
+  project_host_alias: null,
   isStarred: 0,
   isArchived: 0,
 };
@@ -172,6 +173,7 @@ test('createProject rejects duplicate project host aliases', async () => {
               project_id: 'project-2',
               project_path: '/workspace/tester/existing-project',
               custom_project_name: 'test',
+              project_host_alias: null,
               preview_prod_port: null,
               preview_dev_port: null,
               isStarred: 0,
@@ -212,6 +214,7 @@ test('createProject rejects duplicate preview ports', async () => {
               project_id: 'project-2',
               project_path: '/workspace/tester/existing-project',
               custom_project_name: 'existing-project',
+              project_host_alias: null,
               preview_prod_port: 10003,
               preview_dev_port: null,
               isStarred: 0,
@@ -241,6 +244,7 @@ test('updateProjectRouting persists display name and preview ports after validat
       project_id: 'project-1',
       project_path: '/workspace/tester/my-project',
       custom_project_name: 'my-project',
+      project_host_alias: null,
       preview_prod_port: 10003,
       preview_dev_port: 10004,
       isStarred: 0,
@@ -251,6 +255,7 @@ test('updateProjectRouting persists display name and preview ports after validat
         project_id: 'project-1',
         project_path: '/workspace/tester/my-project',
         custom_project_name: 'my-project',
+        project_host_alias: null,
         preview_prod_port: 10003,
         preview_dev_port: 10004,
         isStarred: 0,
@@ -260,11 +265,11 @@ test('updateProjectRouting persists display name and preview ports after validat
     projectsDb.updateProjectRoutingById = (
       _userId: number,
       _projectId: string,
-      customProjectName: string | null,
+      projectHostAlias: string | null,
       previewProdPort: number | null,
       previewDevPort: number | null,
     ) => {
-      capturedArgs = [customProjectName, previewProdPort, previewDevPort];
+      capturedArgs = [projectHostAlias, previewProdPort, previewDevPort];
     };
 
     updateProjectRouting(TEST_USER_ID, 'project-1', 'test', 10005, 10006);

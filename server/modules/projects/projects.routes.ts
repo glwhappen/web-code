@@ -13,6 +13,8 @@ import { getArchivedProjectsWithSessions, getProjectSessionsPage, getProjectsWit
 import { deleteOrArchiveProject, restoreArchivedProject } from '@/modules/projects/services/project-delete.service.js';
 import { applyLegacyStarredProjectIds, toggleProjectStar } from '@/modules/projects/services/project-star.service.js';
 
+import { normalizeProjectHostLabel } from '../../../shared/projectHosts.js';
+
 const router = express.Router();
 
 type AuthenticatedUser = {
@@ -87,6 +89,16 @@ function readOptionalPortValue(value: unknown): number | null {
   }
 
   return port;
+}
+
+function readOptionalHostAliasValue(value: unknown): string | null {
+  const rawValue = readQueryStringValue(value).trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalizedValue = normalizeProjectHostLabel(rawValue);
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
 function parseNonNegativeIntQuery(value: unknown, name: string, fallback: number): number {
@@ -318,14 +330,15 @@ router.put(
     const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const requestBody = req.body as Record<string, unknown>;
-    const displayName = typeof requestBody.displayName === 'string' ? requestBody.displayName : '';
+    const projectHostAlias = typeof requestBody.projectHostAlias === 'string' ? requestBody.projectHostAlias : '';
     const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
     const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
+    const normalizedProjectHostAlias = readOptionalHostAliasValue(projectHostAlias);
 
-    updateProjectRouting(userId, projectId, displayName, previewProdPort, previewDevPort);
+    updateProjectRouting(userId, projectId, projectHostAlias, previewProdPort, previewDevPort);
     res.json({
       success: true,
-      displayName,
+      projectHostAlias: normalizedProjectHostAlias,
       previewProdPort,
       previewDevPort,
     });

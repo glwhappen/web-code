@@ -14,7 +14,7 @@ import {
   validateWorkspacePath,
 } from '@/shared/utils.js';
 
-import { projectDisplayNameToHostLabel } from '../../../../shared/projectHosts.js';
+import { normalizeProjectHostLabel, projectDisplayNameToHostLabel } from '../../../../shared/projectHosts.js';
 
 type CreateProjectInput = {
   userId: number;
@@ -46,6 +46,7 @@ type ProjectApiView = {
   fullPath: string;
   displayName: string;
   customName: string | null;
+  projectHostAlias: string | null;
   previewProdPort: number | null;
   previewDevPort: number | null;
   isArchived: boolean;
@@ -101,8 +102,23 @@ function resolveDisplayName(customName: string | null | undefined, projectPath: 
   return path.basename(projectPath) || projectPath;
 }
 
-function resolveProjectHostLabel(displayName: string, projectPath: string): string {
-  return projectDisplayNameToHostLabel(displayName, projectPath);
+function normalizeProjectHostAlias(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = normalizeProjectHostLabel(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function resolveProjectHostLabel(projectRow: ProjectRepositoryRow): string {
+  const explicitAlias = normalizeProjectHostAlias(projectRow.project_host_alias);
+  if (explicitAlias) {
+    return explicitAlias;
+  }
+
+  const displayName = resolveDisplayName(projectRow.custom_project_name, projectRow.project_path);
+  return projectDisplayNameToHostLabel(displayName, projectRow.project_path);
 }
 
 function normalizePreviewPort(port: unknown): number | null {
@@ -119,13 +135,11 @@ function normalizePreviewPort(port: unknown): number | null {
 }
 
 function assertProjectHostLabelIsAvailable(
-  desiredDisplayName: string,
-  projectPath: string,
+  desiredHostLabel: string,
   projectRows: ProjectRepositoryRow[],
   currentProjectId: string | null = null,
 ): void {
-  const desiredLabel = resolveProjectHostLabel(desiredDisplayName, projectPath);
-  if (!desiredLabel) {
+  if (!desiredHostLabel) {
     return;
   }
 
@@ -134,16 +148,15 @@ function assertProjectHostLabelIsAvailable(
       return false;
     }
 
-    const existingDisplayName = resolveDisplayName(projectRow.custom_project_name, projectRow.project_path);
-    const existingLabel = resolveProjectHostLabel(existingDisplayName, projectRow.project_path);
-    return existingLabel === desiredLabel;
+    const existingLabel = resolveProjectHostLabel(projectRow);
+    return existingLabel === desiredHostLabel;
   });
 
   if (conflictingProject) {
     throw new AppError('Project host alias already exists', {
       code: 'PROJECT_HOST_ALIAS_CONFLICT',
       statusCode: 409,
-      details: `Project host alias "${desiredLabel}" is already in use. Choose a different English project name.`,
+      details: `Project host alias "${desiredHostLabel}" is already in use. Choose a different hostname alias.`,
     });
   }
 }
@@ -207,14 +220,13 @@ function assertProjectPreviewPortsAreAvailable(
 }
 
 function assertProjectRoutingIsAvailable(
-  desiredDisplayName: string,
-  projectPath: string,
+  desiredHostLabel: string,
   desiredPreviewProdPort: number | null,
   desiredPreviewDevPort: number | null,
   projectRows: ProjectRepositoryRow[],
   currentProjectId: string | null = null,
 ): void {
-  assertProjectHostLabelIsAvailable(desiredDisplayName, projectPath, projectRows, currentProjectId);
+  assertProjectHostLabelIsAvailable(desiredHostLabel, projectRows, currentProjectId);
   assertProjectPreviewPortsAreAvailable(desiredPreviewProdPort, desiredPreviewDevPort, projectRows, currentProjectId);
 }
 
@@ -225,6 +237,7 @@ function mapProjectRowToApiView(projectRow: ProjectRepositoryRow): ProjectApiVie
     fullPath: projectRow.project_path,
     displayName: resolveDisplayName(projectRow.custom_project_name, projectRow.project_path),
     customName: projectRow.custom_project_name,
+    projectHostAlias: normalizeProjectHostAlias(projectRow.project_host_alias),
     previewProdPort: projectRow.preview_prod_port ?? null,
     previewDevPort: projectRow.preview_dev_port ?? null,
     isArchived: Boolean(projectRow.isArchived),
@@ -276,9 +289,9 @@ export async function createProject(
   const normalizedCustomName = resolveDisplayName(input.customName ?? null, resolvedProjectPath);
   const normalizedPreviewProdPort = normalizePreviewPort(input.previewProdPort ?? null);
   const normalizedPreviewDevPort = normalizePreviewPort(input.previewDevPort ?? null);
+  const desiredHostLabel = projectDisplayNameToHostLabel(normalizedCustomName, resolvedProjectPath);
   assertProjectRoutingIsAvailable(
-    normalizedCustomName,
-    resolvedProjectPath,
+    desiredHostLabel,
     normalizedPreviewProdPort,
     normalizedPreviewDevPort,
     dependencies.getAllProjectPaths(),
@@ -321,13 +334,12 @@ export function updateProjectDisplayName(userId: number, projectId: string, newD
   const trimmed = typeof newDisplayName === 'string' ? newDisplayName.trim() : '';
   const currentProject = projectsDb.getProjectById(userId, projectId);
   if (currentProject) {
-    const nextDisplayName = trimmed.length > 0 ? trimmed : resolveDisplayName(null, currentProject.project_path);
-    assertProjectHostLabelIsAvailable(
-      nextDisplayName,
-      currentProject.project_path,
-      projectsDb.getAllProjectPaths(),
-      projectId,
-    );
+    const currentHostAlias = normalizeProjectHostAlias(currentProject.project_host_alias);
+    if (!currentHostAlias) {
+      const nextDisplayName = trimmed.length > 0 ? trimmed : resolveDisplayName(null, currentProject.project_path);
+      const nextHostLabel = projectDisplayNameToHostLabel(nextDisplayName, currentProject.project_path);
+      assertProjectHostLabelIsAvailable(nextHostLabel, projectsDb.getAllProjectPaths(), projectId);
+    }
   }
   projectsDb.updateCustomProjectNameById(userId, projectId, trimmed.length > 0 ? trimmed : null);
 }
@@ -366,7 +378,7 @@ export function updateProjectPreviewPorts(
 export function updateProjectRouting(
   userId: number,
   projectId: string,
-  displayName: unknown,
+  projectHostAlias: unknown,
   previewProdPort: unknown,
   previewDevPort: unknown,
 ): void {
@@ -378,16 +390,18 @@ export function updateProjectRouting(
     });
   }
 
-  const trimmedDisplayName = typeof displayName === 'string' ? displayName.trim() : '';
-  const resolvedDisplayName = trimmedDisplayName.length > 0
-    ? trimmedDisplayName
-    : resolveDisplayName(null, currentProject.project_path);
+  const normalizedProjectHostAlias = normalizeProjectHostAlias(projectHostAlias);
   const normalizedPreviewProdPort = normalizePreviewPort(previewProdPort);
   const normalizedPreviewDevPort = normalizePreviewPort(previewDevPort);
+  const desiredHostLabel =
+    normalizedProjectHostAlias
+    ?? projectDisplayNameToHostLabel(
+      resolveDisplayName(currentProject.custom_project_name, currentProject.project_path),
+      currentProject.project_path,
+    );
 
   assertProjectRoutingIsAvailable(
-    resolvedDisplayName,
-    currentProject.project_path,
+    desiredHostLabel,
     normalizedPreviewProdPort,
     normalizedPreviewDevPort,
     projectsDb.getAllActiveProjectPaths(),
@@ -397,7 +411,7 @@ export function updateProjectRouting(
   projectsDb.updateProjectRoutingById(
     userId,
     projectId,
-    trimmedDisplayName.length > 0 ? trimmedDisplayName : null,
+    normalizedProjectHostAlias,
     normalizedPreviewProdPort,
     normalizedPreviewDevPort,
   );
