@@ -32,7 +32,6 @@ import CommandMenu from './CommandMenu';
 import ClaudeStatus from './ClaudeStatus';
 import ImageAttachment from './ImageAttachment';
 import PermissionRequestsBanner from './PermissionRequestsBanner';
-import ThinkingModeSelector from './ThinkingModeSelector';
 import TokenUsageSummary from './TokenUsageSummary';
 
 interface MentionableFile {
@@ -63,9 +62,8 @@ interface ChatComposerProps {
   provider: Provider | string;
   permissionMode: PermissionMode | string;
   onModeSwitch: () => void;
-  thinkingMode: string;
-  setThinkingMode: Dispatch<SetStateAction<string>>;
   tokenBudget: Record<string, unknown> | null;
+  onShowTokenUsage: () => void;
   slashCommandsCount: number;
   onToggleCommandMenu: () => void;
   hasInput: boolean;
@@ -123,9 +121,8 @@ export default function ChatComposer({
   provider,
   permissionMode,
   onModeSwitch,
-  thinkingMode,
-  setThinkingMode,
   tokenBudget,
+  onShowTokenUsage,
   slashCommandsCount,
   onToggleCommandMenu,
   hasInput,
@@ -444,6 +441,7 @@ export default function ChatComposer({
 
             <PromptInputTextarea
               ref={textareaRef}
+              dir="auto"
               value={input}
               onChange={onInputChange}
               onClick={onTextareaClick}
@@ -506,11 +504,7 @@ export default function ChatComposer({
               </div>
             </button>
 
-            {provider === 'claude' && (
-              <ThinkingModeSelector selectedMode={thinkingMode} onModeChange={setThinkingMode} onClose={() => {}} className="" />
-            )}
-
-            <TokenUsageSummary usage={tokenBudget} />
+            <TokenUsageSummary usage={tokenBudget} onClick={onShowTokenUsage} />
 
             <PromptInputButton
               tooltip={{ content: t('input.showAllCommands') }}
