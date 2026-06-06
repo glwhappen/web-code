@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown, ChevronRight, Edit3, Folder, FolderOpen, MoreHorizontal, Star, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
@@ -486,10 +487,10 @@ export default function SidebarProjectItem({
         </Button>
       </div>
 
-      {isProjectMenuOpen && !isEditing && (
+      {isProjectMenuOpen && !isEditing && typeof document !== 'undefined' && createPortal(
         <div
           data-project-actions-menu={project.projectId}
-          className="fixed z-50 w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+          className="fixed z-[200] w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
           style={{ top: `${projectMenuPosition.top}px`, left: `${projectMenuPosition.left}px` }}
         >
           <button
@@ -525,7 +526,8 @@ export default function SidebarProjectItem({
             <Trash2 className="h-3.5 w-3.5" />
             {t('projects.deleteProject')}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <SidebarProjectSessions
