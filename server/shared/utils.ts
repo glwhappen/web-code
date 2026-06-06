@@ -167,6 +167,54 @@ export async function ensureUserWorkspaceRoot(username: unknown): Promise<string
 }
 
 /**
+ * Expands `~` to a caller-scoped workspace root so user-facing paths can stay
+ * stable even when the underlying storage lives in a system account directory.
+ */
+export function expandWorkspacePathFromRoot(inputPath: string, workspaceRoot: string): string {
+  const normalizedInputPath = typeof inputPath === 'string' ? inputPath.trim() : '';
+  const normalizedWorkspaceRoot = normalizeProjectPath(workspaceRoot);
+
+  if (!normalizedInputPath) {
+    return normalizedWorkspaceRoot;
+  }
+
+  if (normalizedInputPath === '~') {
+    return normalizedWorkspaceRoot;
+  }
+
+  if (normalizedInputPath.startsWith('~/') || normalizedInputPath.startsWith('~\\')) {
+    return path.join(normalizedWorkspaceRoot, normalizedInputPath.slice(2));
+  }
+
+  return normalizedInputPath;
+}
+
+/**
+ * Collapses an absolute workspace path back to a `~`-relative display path for
+ * the authenticated user.
+ */
+export function collapseWorkspacePathForDisplay(inputPath: string, workspaceRoot: string): string {
+  const normalizedInputPath = normalizeProjectPath(inputPath);
+  const normalizedWorkspaceRoot = normalizeProjectPath(workspaceRoot);
+
+  if (!normalizedInputPath || !normalizedWorkspaceRoot) {
+    return normalizedInputPath;
+  }
+
+  if (normalizedInputPath === normalizedWorkspaceRoot) {
+    return '~';
+  }
+
+  const prefix = `${normalizedWorkspaceRoot}${path.sep}`;
+  if (normalizedInputPath.startsWith(prefix)) {
+    const relativePath = normalizedInputPath.slice(prefix.length);
+    return `~/${relativePath}`;
+  }
+
+  return normalizedInputPath;
+}
+
+/**
  * Returns the runtime HOME directory reserved for one authenticated website
  * user. Child processes spawned on that user's behalf should receive this path
  * as `HOME` so global CLI state (`.gitconfig`, `.codex`, `.claude`, etc.)
@@ -327,7 +375,19 @@ export async function validateWorkspacePath(
     const absolutePath = path.resolve(normalizedRequestedPath);
     const normalizedPath = normalizeProjectPath(absolutePath);
 
-    if (FORBIDDEN_WORKSPACE_PATHS.includes(normalizedPath) || normalizedPath === '/') {
+    // Resolve the configured workspace root first so admins can explicitly
+    // place managed workspaces under locations like /root/web-code-workspaces
+    // without reopening the rest of /root for arbitrary project creation.
+    await mkdir(workspaceRoot, { recursive: true });
+    const resolvedWorkspaceRoot = normalizeProjectPath(await realpath(workspaceRoot));
+    const isWithinWorkspaceRoot =
+      normalizedPath === resolvedWorkspaceRoot
+      || normalizedPath.startsWith(`${resolvedWorkspaceRoot}${path.sep}`);
+
+    if (
+      !isWithinWorkspaceRoot
+      && (FORBIDDEN_WORKSPACE_PATHS.includes(normalizedPath) || normalizedPath === '/')
+    ) {
       return {
         valid: false,
         error: 'Cannot use system-critical directories as workspace locations',
@@ -337,8 +397,11 @@ export async function validateWorkspacePath(
     for (const forbiddenPath of FORBIDDEN_WORKSPACE_PATHS) {
       const normalizedForbiddenPath = normalizeProjectPath(forbiddenPath);
       if (
-        normalizedPath === normalizedForbiddenPath
-        || normalizedPath.startsWith(`${normalizedForbiddenPath}${path.sep}`)
+        !isWithinWorkspaceRoot
+        && (
+          normalizedPath === normalizedForbiddenPath
+          || normalizedPath.startsWith(`${normalizedForbiddenPath}${path.sep}`)
+        )
       ) {
         // Allow specific user-writable folders under /var.
         if (
@@ -377,10 +440,6 @@ export async function validateWorkspacePath(
       }
     }
 
-    // Ensure the workspace root exists before realpath so we can give a clean
-    // error to admins who haven't created it yet. Cheap & idempotent.
-    await mkdir(workspaceRoot, { recursive: true });
-    const resolvedWorkspaceRoot = normalizeProjectPath(await realpath(workspaceRoot));
     if (
       !resolvedPath.startsWith(`${resolvedWorkspaceRoot}${path.sep}`)
       && resolvedPath !== resolvedWorkspaceRoot
