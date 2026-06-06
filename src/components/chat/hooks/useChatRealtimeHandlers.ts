@@ -191,6 +191,12 @@ export function useChatRealtimeHandlers({
     /* ---------------------------------------------------------------- */
 
     const sid = msg.sessionId || activeViewSessionId;
+    const resolveLifecycleSessionId = () =>
+      sid
+      || currentSessionId
+      || selectedSession?.id
+      || pendingViewSessionRef.current?.sessionId
+      || null;
 
     // --- Streaming: buffer for performance ---
     if (msg.kind === 'stream_delta') {
@@ -270,6 +276,7 @@ export function useChatRealtimeHandlers({
       }
 
       case 'complete': {
+        const lifecycleSessionId = resolveLifecycleSessionId();
         // Flush any remaining streaming state
         if (streamTimerRef.current) {
           clearTimeout(streamTimerRef.current);
@@ -285,9 +292,8 @@ export function useChatRealtimeHandlers({
         setCanAbortSession(false);
         setClaudeStatus(null);
         setPendingPermissionRequests([]);
-        onSessionInactive?.(sid);
-        onSessionNotProcessing?.(sid);
-        pendingViewSessionRef.current = null;
+        onSessionInactive?.(lifecycleSessionId);
+        onSessionNotProcessing?.(lifecycleSessionId);
 
         // Handle aborted case
         if (msg.aborted) {
@@ -343,12 +349,12 @@ export function useChatRealtimeHandlers({
       }
 
       case 'error': {
+        const lifecycleSessionId = resolveLifecycleSessionId();
         setIsLoading(false);
         setCanAbortSession(false);
         setClaudeStatus(null);
-        onSessionInactive?.(sid);
-        onSessionNotProcessing?.(sid);
-        pendingViewSessionRef.current = null;
+        onSessionInactive?.(lifecycleSessionId);
+        onSessionNotProcessing?.(lifecycleSessionId);
         break;
       }
 

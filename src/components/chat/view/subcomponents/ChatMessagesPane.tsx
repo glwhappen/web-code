@@ -16,8 +16,6 @@ import ProviderSelectionEmptyState from './ProviderSelectionEmptyState';
 
 interface ChatMessagesPaneProps {
   scrollContainerRef: RefObject<HTMLDivElement>;
-  onWheel: () => void;
-  onTouchMove: () => void;
   isLoadingSessionMessages: boolean;
   chatMessages: ChatMessage[];
   selectedSession: ProjectSession | null;
@@ -65,8 +63,6 @@ interface ChatMessagesPaneProps {
 
 export default function ChatMessagesPane({
   scrollContainerRef,
-  onWheel,
-  onTouchMove,
   isLoadingSessionMessages,
   chatMessages,
   selectedSession,
@@ -143,9 +139,8 @@ export default function ChatMessagesPane({
   return (
     <div
       ref={scrollContainerRef}
-      onWheel={onWheel}
-      onTouchMove={onTouchMove}
-      className="relative flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-0 py-3 sm:space-y-4 sm:p-4"
+      className="relative flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-0 py-3 [overscroll-behavior-y:contain] sm:space-y-4 sm:p-4"
+      style={{ overflowAnchor: 'none' }}
     >
       {isLoadingSessionMessages && chatMessages.length === 0 ? (
         <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
@@ -204,7 +199,7 @@ export default function ChatMessagesPane({
 
           {/* Floating "Load all messages" overlay */}
           {(showLoadAllOverlay || isLoadingAllMessages || loadAllJustFinished) && (
-            <div className="pointer-events-none sticky top-2 z-20 flex justify-center">
+            <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center">
               {loadAllJustFinished ? (
                 <div className="flex items-center space-x-2 rounded-full bg-green-600 px-4 py-1.5 text-xs font-medium text-white shadow-lg dark:bg-green-500">
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -273,4 +268,3 @@ export default function ChatMessagesPane({
     </div>
   );
 }
-

@@ -97,6 +97,56 @@ const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
 };
 
+const waitForNextPaint = () =>
+  new Promise<void>((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+    window.requestAnimationFrame(() => resolve());
+  });
+
+const scheduleScrollToBottom = (scrollToBottom: () => void) => {
+  if (typeof window === 'undefined') {
+    scrollToBottom();
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  });
+};
+
+const scheduleOptimisticSendUi = ({
+  addMessage,
+  setIsLoading,
+  setCanAbortSession,
+  setClaudeStatus,
+  setIsUserScrolledUp,
+  userMessage,
+}: {
+  addMessage: (msg: ChatMessage) => void;
+  setIsLoading: (loading: boolean) => void;
+  setCanAbortSession: (canAbort: boolean) => void;
+  setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
+  setIsUserScrolledUp: (isScrolledUp: boolean) => void;
+  userMessage: ChatMessage;
+}) => {
+  startTransition(() => {
+    addMessage(userMessage);
+    setIsLoading(true);
+    setCanAbortSession(true);
+    setClaudeStatus({
+      text: 'Processing',
+      tokens: 0,
+      can_interrupt: true,
+    });
+    setIsUserScrolledUp(false);
+  });
+};
+
 const readApiData = async <T,>(response: Response): Promise<T> => {
   const payload = await response.json();
   return (payload?.data ?? payload) as T;
@@ -175,8 +225,14 @@ export function useChatComposerState({
   >(null);
   const inputValueRef = useRef(input);
   const isLoadingRef = useRef(isLoading);
+  const textareaLineHeightRef = useRef<number | null>(null);
+  const lastComposerErrorAtRef = useRef(0);
   const autoSendingQueuedMessageRef = useRef(false);
   const queueProcessingRef = useRef(false);
+  const queuedDispatchStateRef = useRef<{ awaitingCompletion: boolean; sawBusy: boolean }>({
+    awaitingCompletion: false,
+    sawBusy: false,
+  });
   const selectedProjectId = selectedProject?.projectId;
   const activeQueueSessionId = currentSessionId || selectedSession?.id || null;
 
@@ -427,6 +483,35 @@ export function useChatComposerState({
     inputHighlightRef.current.scrollLeft = target.scrollLeft;
   }, []);
 
+  const reportComposerRuntimeError = useCallback(
+    (label: string, error: unknown) => {
+      console.error(`Composer runtime error (${label}):`, error);
+      const now = Date.now();
+      if (now - lastComposerErrorAtRef.current < 5000) {
+        return;
+      }
+      lastComposerErrorAtRef.current = now;
+      addMessage({
+        type: 'error',
+        content: 'Input encountered a temporary error. Please continue typing or retry.',
+        timestamp: new Date(),
+      });
+    },
+    [addMessage],
+  );
+
+  const getTextareaLineHeight = useCallback((target: HTMLTextAreaElement): number => {
+    if (textareaLineHeightRef.current !== null) {
+      return textareaLineHeightRef.current;
+    }
+
+    const parsedLineHeight = Number.parseFloat(window.getComputedStyle(target).lineHeight);
+    const fallbackLineHeight = 22;
+    const lineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fallbackLineHeight;
+    textareaLineHeightRef.current = lineHeight;
+    return lineHeight;
+  }, []);
+
   const handleImageFiles = useCallback((files: File[]) => {
     const validFiles = files.filter((file) => {
       try {
@@ -463,27 +548,31 @@ export function useChatComposerState({
 
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      const items = Array.from(event.clipboardData.items);
+      try {
+        const items = Array.from(event.clipboardData.items);
 
-      items.forEach((item) => {
-        if (!item.type.startsWith('image/')) {
-          return;
-        }
-        const file = item.getAsFile();
-        if (file) {
-          handleImageFiles([file]);
-        }
-      });
+        items.forEach((item) => {
+          if (!item.type.startsWith('image/')) {
+            return;
+          }
+          const file = item.getAsFile();
+          if (file) {
+            handleImageFiles([file]);
+          }
+        });
 
-      if (items.length === 0 && event.clipboardData.files.length > 0) {
-        const files = Array.from(event.clipboardData.files);
-        const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-        if (imageFiles.length > 0) {
-          handleImageFiles(imageFiles);
+        if (items.length === 0 && event.clipboardData.files.length > 0) {
+          const files = Array.from(event.clipboardData.files);
+          const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+          if (imageFiles.length > 0) {
+            handleImageFiles(imageFiles);
+          }
         }
+      } catch (error) {
+        reportComposerRuntimeError('paste', error);
       }
     },
-    [handleImageFiles],
+    [handleImageFiles, reportComposerRuntimeError],
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -721,6 +810,18 @@ export function useChatComposerState({
         onSessionProcessing?.(effectiveSessionId);
       }
 
+      if (!shouldClearComposer) {
+        scheduleOptimisticSendUi({
+          addMessage,
+          setIsLoading,
+          setCanAbortSession,
+          setClaudeStatus,
+          setIsUserScrolledUp,
+          userMessage,
+        });
+        scheduleScrollToBottom(scrollToBottom);
+      }
+
       const getToolsSettings = () => {
         try {
           const settingsKey =
@@ -834,6 +935,17 @@ export function useChatComposerState({
       if (shouldClearComposer) {
         resetComposerAfterHandledInput();
         setThinkingMode('none');
+        // Let the input clear paint before the heavier chat-list updates kick in.
+        await waitForNextPaint();
+        scheduleOptimisticSendUi({
+          addMessage,
+          setIsLoading,
+          setCanAbortSession,
+          setClaudeStatus,
+          setIsUserScrolledUp,
+          userMessage,
+        });
+        scheduleScrollToBottom(scrollToBottom);
       }
 
       return true;
@@ -962,6 +1074,7 @@ export function useChatComposerState({
       || queuedMessages.length === 0
       || autoSendingQueuedMessageRef.current
       || queueProcessingRef.current
+      || queuedDispatchStateRef.current.awaitingCompletion
     ) {
       return;
     }
@@ -988,11 +1101,16 @@ export function useChatComposerState({
           nextMessage.content,
           queuedImages.length > 0 ? { images: queuedImages } : undefined,
         );
-      }
-      window.setTimeout(() => {
+        queuedDispatchStateRef.current.awaitingCompletion = false;
+        queuedDispatchStateRef.current.sawBusy = false;
         autoSendingQueuedMessageRef.current = false;
         queueProcessingRef.current = false;
-      }, 250);
+        return;
+      }
+      // Hold the queue lock until this message has actually gone through a
+      // busy->idle cycle, preventing multiple queued messages from dispatching together.
+      queuedDispatchStateRef.current.awaitingCompletion = true;
+      queuedDispatchStateRef.current.sawBusy = false;
     })();
   }, [
     activeQueueSessionId,
@@ -1004,6 +1122,26 @@ export function useChatComposerState({
     submitDirectMessage,
     isLoading,
   ]);
+
+  useEffect(() => {
+    if (!queuedDispatchStateRef.current.awaitingCompletion) {
+      return;
+    }
+
+    if (isLoading || activeSessionIsProcessing) {
+      queuedDispatchStateRef.current.sawBusy = true;
+      return;
+    }
+
+    if (!queuedDispatchStateRef.current.sawBusy) {
+      return;
+    }
+
+    queuedDispatchStateRef.current.awaitingCompletion = false;
+    queuedDispatchStateRef.current.sawBusy = false;
+    autoSendingQueuedMessageRef.current = false;
+    queueProcessingRef.current = false;
+  }, [activeSessionIsProcessing, isLoading]);
 
   useEffect(() => {
     isLoadingRef.current = isLoading;
@@ -1043,10 +1181,10 @@ export function useChatComposerState({
     // Re-run when input changes so restored drafts get the same autosize behavior as typed text.
     textareaRef.current.style.height = 'auto';
     textareaRef.current.style.height = `${Math.max(22, textareaRef.current.scrollHeight)}px`;
-    const lineHeight = parseInt(window.getComputedStyle(textareaRef.current).lineHeight);
+    const lineHeight = getTextareaLineHeight(textareaRef.current);
     const expanded = textareaRef.current.scrollHeight > lineHeight * 2;
     setIsTextareaExpanded(expanded);
-  }, [input]);
+  }, [getTextareaLineHeight, input]);
 
   useEffect(() => {
     if (!textareaRef.current || input.trim()) {
@@ -1058,52 +1196,63 @@ export function useChatComposerState({
 
   const handleInputChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
-      const newValue = event.target.value;
-      const cursorPos = event.target.selectionStart;
+      try {
+        const newValue = event.target.value;
+        const cursorPos = event.target.selectionStart;
 
-      setInput(newValue);
-      inputValueRef.current = newValue;
-      setCursorPosition(cursorPos);
+        setInput(newValue);
+        inputValueRef.current = newValue;
+        setCursorPosition(cursorPos);
 
-      if (!newValue.trim()) {
-        event.target.style.height = 'auto';
-        setIsTextareaExpanded(false);
-        resetCommandMenuState();
-        return;
+        if (!newValue.trim()) {
+          event.target.style.height = 'auto';
+          setIsTextareaExpanded(false);
+          resetCommandMenuState();
+          return;
+        }
+
+        handleCommandInputChange(newValue, cursorPos);
+      } catch (error) {
+        reportComposerRuntimeError('input-change', error);
       }
-
-      handleCommandInputChange(newValue, cursorPos);
     },
-    [handleCommandInputChange, resetCommandMenuState, setCursorPosition],
+    [handleCommandInputChange, reportComposerRuntimeError, resetCommandMenuState, setCursorPosition],
   );
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (handleCommandMenuKeyDown(event)) {
-        return;
-      }
-
-      if (handleFileMentionsKeyDown(event)) {
-        return;
-      }
-
-      if (event.key === 'Tab' && !showFileDropdown && !showCommandMenu) {
-        event.preventDefault();
-        cyclePermissionMode();
-        return;
-      }
-
-      if (event.key === 'Enter') {
-        if (event.nativeEvent.isComposing) {
+      try {
+        if (handleCommandMenuKeyDown(event)) {
           return;
         }
 
-        if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
+        if (handleFileMentionsKeyDown(event)) {
+          return;
+        }
+
+        if (event.key === 'Tab' && !showFileDropdown && !showCommandMenu) {
           event.preventDefault();
-          handleSubmit(event);
-        } else if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !sendByCtrlEnter) {
+          cyclePermissionMode();
+          return;
+        }
+
+        if (event.key === 'Enter') {
+          if (event.nativeEvent.isComposing) {
+            return;
+          }
+
+          if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
+            event.preventDefault();
+            handleSubmit(event);
+          } else if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !sendByCtrlEnter) {
+            event.preventDefault();
+            handleSubmit(event);
+          }
+        }
+      } catch (error) {
+        reportComposerRuntimeError('key-down', error);
+        if (!event.defaultPrevented) {
           event.preventDefault();
-          handleSubmit(event);
         }
       }
     },
@@ -1115,28 +1264,37 @@ export function useChatComposerState({
       sendByCtrlEnter,
       showCommandMenu,
       showFileDropdown,
+      reportComposerRuntimeError,
     ],
   );
 
   const handleTextareaClick = useCallback(
     (event: MouseEvent<HTMLTextAreaElement>) => {
-      setCursorPosition(event.currentTarget.selectionStart);
+      try {
+        setCursorPosition(event.currentTarget.selectionStart);
+      } catch (error) {
+        reportComposerRuntimeError('textarea-click', error);
+      }
     },
-    [setCursorPosition],
+    [reportComposerRuntimeError, setCursorPosition],
   );
 
   const handleTextareaInput = useCallback(
     (event: FormEvent<HTMLTextAreaElement>) => {
-      const target = event.currentTarget;
-      target.style.height = 'auto';
-      target.style.height = `${Math.max(22, target.scrollHeight)}px`;
-      setCursorPosition(target.selectionStart);
-      syncInputOverlayScroll(target);
+      try {
+        const target = event.currentTarget;
+        target.style.height = 'auto';
+        target.style.height = `${Math.max(22, target.scrollHeight)}px`;
+        setCursorPosition(target.selectionStart);
+        syncInputOverlayScroll(target);
 
-      const lineHeight = parseInt(window.getComputedStyle(target).lineHeight);
-      setIsTextareaExpanded(target.scrollHeight > lineHeight * 2);
+        const lineHeight = getTextareaLineHeight(target);
+        setIsTextareaExpanded(target.scrollHeight > lineHeight * 2);
+      } catch (error) {
+        reportComposerRuntimeError('textarea-input', error);
+      }
     },
-    [setCursorPosition, syncInputOverlayScroll],
+    [getTextareaLineHeight, reportComposerRuntimeError, setCursorPosition, syncInputOverlayScroll],
   );
 
   const handleClearInput = useCallback(() => {

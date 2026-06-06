@@ -11,6 +11,7 @@ import { normalizedToChatMessages } from './useChatMessages';
 
 const MESSAGES_PER_PAGE = 20;
 const INITIAL_VISIBLE_MESSAGES = 100;
+const SESSION_MESSAGES_TIMEOUT_MS = 15000;
 
 type PendingViewSession = {
   startedAt: number;
@@ -131,6 +132,8 @@ export function useChatSessionState({
   const pendingInitialScrollRef = useRef(true);
   const messagesOffsetRef = useRef(0);
   const scrollPositionRef = useRef({ height: 0, top: 0 });
+  const isUserScrolledUpRef = useRef(false);
+  const nearBottomRef = useRef(true);
   const loadAllFinishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAllOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoadedSessionKeyRef = useRef<string | null>(null);
@@ -194,6 +197,8 @@ export function useChatSessionState({
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
     pendingInitialScrollRef.current = true;
+    nearBottomRef.current = true;
+    isUserScrolledUpRef.current = false;
     lastLoadedSessionKeyRef.current = null;
 
     if (loadAllOverlayTimerRef.current) {
@@ -319,6 +324,7 @@ export function useChatSessionState({
       const sessionProvider = selectedSession.__provider || 'claude';
 
       isLoadingMoreRef.current = true;
+      setIsLoadingMoreMessages(true);
       const previousScrollHeight = container.scrollHeight;
       const previousScrollTop = container.scrollTop;
 
@@ -339,6 +345,7 @@ export function useChatSessionState({
         return true;
       } finally {
         isLoadingMoreRef.current = false;
+        setIsLoadingMoreMessages(false);
       }
     },
     [hasMoreMessages, isLoadingMoreMessages, selectedProject, selectedSession, sessionStore],
@@ -349,6 +356,8 @@ export function useChatSessionState({
     if (!container) return;
 
     const nearBottom = isNearBottom();
+    nearBottomRef.current = nearBottom;
+    isUserScrolledUpRef.current = !nearBottom;
     setIsUserScrolledUp(!nearBottom);
 
     if (!allMessagesLoadedRef.current) {
@@ -380,6 +389,8 @@ export function useChatSessionState({
     }
     topLoadLockRef.current = false;
     pendingScrollRestoreRef.current = null;
+    nearBottomRef.current = true;
+    isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
   }, [selectedProject?.projectId, selectedSession?.id]);
 
@@ -470,6 +481,7 @@ export function useChatSessionState({
       projectPath: selectedProject.fullPath || selectedProject.path || '',
       limit: MESSAGES_PER_PAGE,
       offset: 0,
+      timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
     }).then(slot => {
       if (slot) {
         setHasMoreMessages(slot.hasMore);
@@ -506,7 +518,7 @@ export function useChatSessionState({
             projectPath: selectedProject.fullPath || selectedProject.path || '',
           });
 
-          if (Boolean(autoScrollToBottom) && isNearBottom()) {
+          if (Boolean(autoScrollToBottom) && nearBottomRef.current && !isUserScrolledUpRef.current) {
             setTimeout(() => scrollToBottom(), 200);
           }
         }
@@ -519,7 +531,6 @@ export function useChatSessionState({
   }, [
     autoScrollToBottom,
     externalMessageUpdate,
-    isNearBottom,
     scrollToBottom,
     selectedProject,
     selectedSession,
@@ -559,6 +570,7 @@ export function useChatSessionState({
               projectPath: selectedProject.fullPath || selectedProject.path || '',
               limit: null,
               offset: 0,
+              timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
             });
             if (slot) {
               setHasMoreMessages(false);
@@ -672,7 +684,9 @@ export function useChatSessionState({
     if (searchScrollActiveRef.current) return;
 
     if (autoScrollToBottom) {
-      if (!isUserScrolledUp) setTimeout(() => scrollToBottom(), 50);
+      if (nearBottomRef.current && !isUserScrolledUpRef.current) {
+        setTimeout(() => scrollToBottom(), 50);
+      }
       return;
     }
 
@@ -741,6 +755,7 @@ export function useChatSessionState({
         projectPath: selectedProject.fullPath || selectedProject.path || '',
         limit: null,
         offset: 0,
+        timeoutMs: SESSION_MESSAGES_TIMEOUT_MS,
       });
 
       if (currentSessionId !== requestSessionId) return;
