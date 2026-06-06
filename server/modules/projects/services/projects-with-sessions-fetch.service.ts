@@ -192,14 +192,14 @@ function readProjectSessionsPageByPath(
 }
 
 // Broadcast progress to all connected WebSocket clients
-function broadcastProgress(progress: ProgressUpdate) {
+function broadcastProgress(userId: number, progress: ProgressUpdate) {
   const message = JSON.stringify({
     type: 'loading_progress',
     ...progress,
   });
 
   connectedClients.forEach((client: RealtimeClientConnection) => {
-    if (client.readyState === WS_OPEN_STATE) {
+    if (client.readyState === WS_OPEN_STATE && Number(client.userId) === userId) {
       client.send(message);
     }
   });
@@ -233,7 +233,7 @@ export async function getProjectsWithSessions(
     const projectId = row.project_id;
     const projectPath = row.project_path;
 
-    broadcastProgress({
+    broadcastProgress(userId, {
       phase: 'loading',
       current: processedProjects,
       total: totalProjects,
@@ -268,7 +268,7 @@ export async function getProjectsWithSessions(
     });
   }
 
-  broadcastProgress({
+  broadcastProgress(userId, {
     phase: 'complete',
     current: totalProjects,
     total: totalProjects,

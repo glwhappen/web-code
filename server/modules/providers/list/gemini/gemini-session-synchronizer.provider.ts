@@ -86,6 +86,10 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
         continue;
       }
 
+      if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
+        continue;
+      }
+
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
         ownerUserId,
@@ -119,6 +123,10 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
       ? await this.processJsonlSessionFile(filePath, this.buildProjectHashLookup(ownerUserId))
       : await this.processLegacySessionFile(filePath);
     if (!parsed) {
+      return null;
+    }
+
+    if (!projectsDb.getProjectPath(ownerUserId, parsed.projectPath)) {
       return null;
     }
 

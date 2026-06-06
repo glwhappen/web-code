@@ -127,9 +127,11 @@ export function handleChatConnection(
   dependencies: ChatWebSocketDependencies
 ): void {
   console.log('[INFO] Chat WebSocket connected');
-  connectedClients.add(ws);
+  const clientConnection = ws as WebSocket & { userId?: string | number | null };
+  clientConnection.userId = readRequestUserId(request);
+  connectedClients.add(clientConnection);
 
-  const writer = new WebSocketWriter(ws, readRequestUserId(request));
+  const writer = new WebSocketWriter(ws, clientConnection.userId ?? null);
 
   const sendAuthorizationError = (error: AppError, provider: LLMProvider): void => {
     writer.send({
@@ -343,6 +345,6 @@ export function handleChatConnection(
 
   ws.on('close', () => {
     console.log('[INFO] Chat client disconnected');
-    connectedClients.delete(ws);
+    connectedClients.delete(clientConnection);
   });
 }
