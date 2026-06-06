@@ -18,6 +18,8 @@ import GitSettingsTab from '../view/tabs/git-settings/GitSettingsTab';
 import NotificationsSettingsTab from '../view/tabs/NotificationsSettingsTab';
 import TasksSettingsTab from '../view/tabs/tasks-settings/TasksSettingsTab';
 import UserManagementTab from '../view/tabs/UserManagementTab';
+import UsageLogsTab from '../view/tabs/UsageLogsTab';
+import UiLinksConfigTab from '../view/tabs/UiLinksConfigTab';
 
 function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: SettingsProps) {
   const { t } = useTranslation('settings');
@@ -61,7 +63,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
   } = useWebPush();
 
   useEffect(() => {
-    if (activeTab === 'users' && !isAdmin) {
+    if ((activeTab === 'users' || activeTab === 'logs' || activeTab === 'links') && !isAdmin) {
       setActiveTab('agents');
     }
   }, [activeTab, isAdmin, setActiveTab]);
@@ -132,6 +134,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
                 <AgentsSettingsTab
                   providerAuthStatus={providerAuthStatus}
                   onProviderLogin={openLoginForProvider}
+                  isAdmin={isAdmin}
                   claudePermissions={claudePermissions}
                   onClaudePermissionsChange={setClaudePermissions}
                   cursorPermissions={cursorPermissions}
@@ -163,6 +166,10 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
               {activeTab === 'plugins' && <PluginSettingsTab />}
 
               {activeTab === 'users' ? (isAdmin ? <UserManagementTab currentUserId={user?.id} /> : null) : null}
+
+              {activeTab === 'logs' ? (isAdmin ? <UsageLogsTab /> : null) : null}
+
+              {activeTab === 'links' ? (isAdmin ? <UiLinksConfigTab /> : null) : null}
 
               {activeTab === 'about' && <AboutTab />}
             </div>

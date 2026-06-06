@@ -1,6 +1,6 @@
 import express from 'express';
 
-import { apiKeysDb, credentialsDb, notificationPreferencesDb, pushSubscriptionsDb } from '../modules/database/index.js';
+import { apiKeysDb, appConfigDb, credentialsDb, notificationPreferencesDb, pushSubscriptionsDb } from '../modules/database/index.js';
 import { getPublicKey } from '../services/vapid-keys.js';
 import { createNotificationEvent, notifyUserIfEnabled } from '../services/notification-orchestrator.js';
 
@@ -271,6 +271,29 @@ router.post('/push/unsubscribe', async (req, res) => {
   } catch (error) {
     console.error('Error removing push subscription:', error);
     res.status(500).json({ error: 'Failed to remove push subscription' });
+  }
+});
+
+// ===============================
+// Sidebar UI Config (public read — admin writes via /api/admin/ui-config)
+// ===============================
+
+const DEFAULT_SIDEBAR_UI_CONFIG = {
+  reportIssue: { show: true, url: 'https://github.com/siteboon/claudecodeui/issues/new' },
+  joinCommunity: { show: true, url: 'https://discord.gg/buxwujPNRE' },
+  githubRepo: { show: true, url: 'https://github.com/siteboon/claudecodeui' },
+  githubStarBadge: { show: true, url: 'https://github.com/siteboon/claudecodeui' },
+  showUpdateNotification: true,
+};
+
+router.get('/sidebar-config', (req, res) => {
+  try {
+    const raw = appConfigDb.get('sidebar_ui_config');
+    const config = raw ? { ...DEFAULT_SIDEBAR_UI_CONFIG, ...JSON.parse(raw) } : DEFAULT_SIDEBAR_UI_CONFIG;
+    res.json({ success: true, data: config });
+  } catch (error) {
+    console.error('Error reading sidebar config:', error);
+    res.json({ success: true, data: DEFAULT_SIDEBAR_UI_CONFIG });
   }
 });
 

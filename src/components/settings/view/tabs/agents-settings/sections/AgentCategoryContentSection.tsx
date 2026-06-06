@@ -9,6 +9,7 @@ export default function AgentCategoryContentSection({
   selectedAgent,
   selectedCategory,
   agentContextById,
+  isAdmin,
   claudePermissions,
   onClaudePermissionsChange,
   cursorPermissions,
@@ -24,6 +25,7 @@ export default function AgentCategoryContentSection({
           agent={selectedAgent}
           authStatus={agentContextById[selectedAgent].authStatus}
           onLogin={agentContextById[selectedAgent].onLogin}
+          isAdmin={isAdmin}
         />
       )}
 

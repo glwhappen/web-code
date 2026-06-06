@@ -2,12 +2,14 @@ import { LogIn } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button } from '../../../../../../../shared/view/ui';
 import SessionProviderLogo from '../../../../../../llm-logo-provider/SessionProviderLogo';
+import { IS_PLATFORM } from '../../../../../../../constants/config';
 import type { AgentProvider, AuthStatus } from '../../../../../types/types';
 
 type AccountContentProps = {
   agent: AgentProvider;
   authStatus: AuthStatus;
   onLogin: () => void;
+  isAdmin: boolean;
 };
 
 type AgentVisualConfig = {
@@ -65,7 +67,7 @@ const agentConfig: Record<AgentProvider, AgentVisualConfig> = {
   },
 };
 
-export default function AccountContent({ agent, authStatus, onLogin }: AccountContentProps) {
+export default function AccountContent({ agent, authStatus, onLogin, isAdmin }: AccountContentProps) {
   const { t } = useTranslation('settings');
   const config = agentConfig[agent];
 
@@ -119,7 +121,7 @@ export default function AccountContent({ agent, authStatus, onLogin }: AccountCo
             </div>
           </div>
 
-          {authStatus.method !== 'api_key' && (
+          {authStatus.method !== 'api_key' && (IS_PLATFORM || isAdmin) && (
             <div className="border-t border-border/50 pt-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -141,6 +143,16 @@ export default function AccountContent({ agent, authStatus, onLogin }: AccountCo
                   {authStatus.authenticated ? t('agents.login.reLoginButton') : t('agents.login.button')}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {authStatus.method !== 'api_key' && !IS_PLATFORM && !isAdmin && (
+            <div className="border-t border-border/50 pt-4">
+              <p className="text-sm text-muted-foreground">
+                {t('agents.login.adminOnly', {
+                  defaultValue: 'Only administrators can configure provider authentication.',
+                })}
+              </p>
             </div>
           )}
 
