@@ -5,7 +5,13 @@ import path from 'node:path';
 import { githubTokensDb } from '@/modules/database/index.js';
 import { createProject } from '@/modules/projects/services/project-management.service.js';
 import type { WorkspacePathValidationResult } from '@/shared/types.js';
-import { AppError, buildUserProcessEnv, ensureUserWorkspaceRoot, validateWorkspacePath } from '@/shared/utils.js';
+import {
+  AppError,
+  buildUserProcessEnv,
+  ensureUserWorkspaceRoot,
+  expandWorkspacePathFromRoot,
+  validateWorkspacePath,
+} from '@/shared/utils.js';
 
 type CloneProjectInput = {
   workspacePath: string;
@@ -196,7 +202,8 @@ export async function startCloneProject(
   }
 
   const userWorkspaceRoot = await dependencies.resolveUserWorkspaceRoot(input.username);
-  const pathValidation = await dependencies.validatePath(normalizedWorkspacePath, userWorkspaceRoot);
+  const expandedWorkspacePath = expandWorkspacePathFromRoot(normalizedWorkspacePath, userWorkspaceRoot);
+  const pathValidation = await dependencies.validatePath(expandedWorkspacePath, userWorkspaceRoot);
   if (!pathValidation.valid || !pathValidation.resolvedPath) {
     throw new AppError(pathValidation.error || 'Invalid workspace path', {
       code: 'INVALID_PROJECT_PATH',

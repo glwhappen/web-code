@@ -15,6 +15,8 @@ import Database from 'better-sqlite3';
 import {
     AppError,
     WORKSPACES_ROOT,
+    collapseWorkspacePathForDisplay,
+    expandWorkspacePathFromRoot,
     ensureUserWorkspaceRoot,
     getOpenCodeDatabasePath,
     validateWorkspacePath,
@@ -323,20 +325,6 @@ app.post('/api/system/update', authenticateToken, async (req, res) => {
     }
 });
 
-// `~` expands to the caller's per-user workspace root so the file browser
-// lands in the user's own sandbox instead of the host user's home.
-const expandWorkspacePath = (inputPath, userWorkspaceRoot) => {
-    const root = userWorkspaceRoot || WORKSPACES_ROOT;
-    if (!inputPath) return root;
-    if (inputPath === '~') {
-        return root;
-    }
-    if (inputPath.startsWith('~/') || inputPath.startsWith('~\\')) {
-        return path.join(root, inputPath.slice(2));
-    }
-    return inputPath;
-};
-
 // Browse filesystem endpoint for project suggestions - uses existing getFileTree
 app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
     try {
@@ -346,7 +334,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
 
         console.log('[API] Browse filesystem request for path:', dirPath);
         console.log('[API] User workspace root:', userWorkspaceRoot);
-        let targetPath = expandWorkspacePath(dirPath, userWorkspaceRoot);
+        let targetPath = expandWorkspacePathFromRoot(dirPath, userWorkspaceRoot);
 
         // Resolve and normalize the path
         targetPath = path.resolve(targetPath);
@@ -377,7 +365,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
         const directories = fileTree
             .filter(item => item.type === 'directory')
             .map(item => ({
-                path: item.path,
+                path: collapseWorkspacePathForDisplay(item.path, userWorkspaceRoot),
                 name: item.name,
                 type: 'directory'
             }))
@@ -408,7 +396,7 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
         }
 
         res.json({
-            path: resolvedPath,
+            path: collapseWorkspacePathForDisplay(resolvedPath, userWorkspaceRoot),
             suggestions: suggestions
         });
 
@@ -425,7 +413,7 @@ app.post('/api/create-folder', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Path is required' });
         }
         const userWorkspaceRoot = await ensureUserWorkspaceRoot(req.user?.username);
-        const expandedPath = expandWorkspacePath(folderPath, userWorkspaceRoot);
+        const expandedPath = expandWorkspacePathFromRoot(folderPath, userWorkspaceRoot);
         const resolvedInput = path.resolve(expandedPath);
         const validation = await validateWorkspacePath(resolvedInput, userWorkspaceRoot);
         if (!validation.valid) {
@@ -446,7 +434,7 @@ app.post('/api/create-folder', authenticateToken, async (req, res) => {
         }
         try {
             await fs.promises.mkdir(targetPath, { recursive: false });
-            res.json({ success: true, path: targetPath });
+            res.json({ success: true, path: collapseWorkspacePathForDisplay(targetPath, userWorkspaceRoot) });
         } catch (mkdirError) {
             if (mkdirError.code === 'EEXIST') {
                 return res.status(409).json({ error: 'Folder already exists' });
