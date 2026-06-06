@@ -60,6 +60,7 @@ import {
     shouldAutoOpenUrlFromOutput,
 } from './utils/url-detection.js';
 import gitRoutes from './routes/git.js';
+import browserProxyRoutes from './routes/browser-proxy.js';
 import authRoutes from './routes/auth.js';
 import cursorRoutes from './routes/cursor.js';
 import taskmasterRoutes from './routes/taskmaster.js';
@@ -207,6 +208,9 @@ app.use('/api/providers', authenticateToken, providerRoutes);
 
 // Agent API Routes (uses API key authentication)
 app.use('/api/agent', agentRoutes);
+
+// Browser proxy (no auth — only forwards to localhost)
+app.use('/api/browser-proxy', authenticateToken, browserProxyRoutes);
 
 // Serve public files (like api-docs.html)
 app.use(express.static(path.join(APP_ROOT, 'public')));

@@ -22,7 +22,8 @@
     "shell": "Terminale",
     "files": "File",
     "git": "Controllo Versione",
-    "tasks": "Attività"
+    "tasks": "Attività",
+    "browser": "Browser"
   },
   "status": {
     "loading": "Caricamento...",
@@ -263,5 +264,12 @@
       "updateAvailable": "Aggiornamento disponibile",
       "closeSidebar": "Chiudi barra laterale"
     }
+  },
+  "browser": {
+    "urlPlaceholder": "Inserisci URL (es. http://localhost:3000)",
+    "openInNewTab": "Apri in nuova scheda",
+    "emptyTitle": "Inserisci un URL del server per visualizzare",
+    "emptyHint": "es. http://localhost:3000",
+    "proxied": "proxy"
   }
 }

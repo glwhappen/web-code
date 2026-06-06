@@ -22,7 +22,8 @@
     "shell": "终端",
     "files": "文件",
     "git": "源代码管理",
-    "tasks": "任务"
+    "tasks": "任务",
+    "browser": "浏览器"
   },
   "status": {
     "loading": "加载中...",
@@ -361,5 +362,12 @@
       "updateAvailable": "有可用更新",
       "closeSidebar": "关闭侧边栏"
     }
+  },
+  "browser": {
+    "urlPlaceholder": "输入网址（如 http://localhost:3000）",
+    "openInNewTab": "在新标签页中打开",
+    "emptyTitle": "输入服务器网址以预览",
+    "emptyHint": "例如 http://localhost:3000",
+    "proxied": "代理中"
   }
 }
