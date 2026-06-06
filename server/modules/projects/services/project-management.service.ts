@@ -9,6 +9,7 @@ import type {
 } from '@/shared/types.js';
 import {
   AppError,
+  expandWorkspacePathFromRoot,
   ensureUserWorkspaceRoot,
   normalizeProjectPath,
   validateWorkspacePath,
@@ -265,8 +266,8 @@ export async function createProject(
     });
   }
 
-  const normalizedPath = normalizeProjectPath(input.projectPath || '');
-  if (!normalizedPath) {
+  const normalizedInputPath = normalizeProjectPath(input.projectPath || '');
+  if (!normalizedInputPath) {
     throw new AppError('path is required', {
       code: 'PROJECT_PATH_REQUIRED',
       statusCode: 400,
@@ -274,6 +275,8 @@ export async function createProject(
   }
 
   const userWorkspaceRoot = await dependencies.resolveUserWorkspaceRoot(input.username);
+  const expandedProjectPath = expandWorkspacePathFromRoot(normalizedInputPath, userWorkspaceRoot);
+  const normalizedPath = normalizeProjectPath(expandedProjectPath);
   const pathValidation = await dependencies.validatePath(normalizedPath, userWorkspaceRoot);
   if (!pathValidation.valid || !pathValidation.resolvedPath) {
     throw new AppError('Invalid project path', {

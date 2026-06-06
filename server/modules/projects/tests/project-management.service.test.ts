@@ -82,11 +82,13 @@ test('createProject throws conflict when active project path already exists', as
 
 test('createProject passes the per-user workspace root to validatePath', async () => {
   let capturedWorkspaceRoot = '';
+  let capturedProjectPath = '';
 
   await createProject(
-    { userId: TEST_USER_ID, username: TEST_USERNAME, projectPath: '/workspace/tester/my-project' },
+    { userId: TEST_USER_ID, username: TEST_USERNAME, projectPath: '~/my-project' },
     {
-      validatePath: async (_projectPath, workspaceRoot) => {
+      validatePath: async (projectPath, workspaceRoot) => {
+        capturedProjectPath = projectPath;
         capturedWorkspaceRoot = workspaceRoot;
         return { valid: true, resolvedPath: '/workspace/tester/my-project' };
       },
@@ -99,6 +101,7 @@ test('createProject passes the per-user workspace root to validatePath', async (
   );
 
   assert.equal(capturedWorkspaceRoot, TEST_USER_WORKSPACE_ROOT);
+  assert.equal(capturedProjectPath, '/workspace/tester/my-project');
 });
 
 test('createProject falls back to directory name when custom name is not provided', async () => {
