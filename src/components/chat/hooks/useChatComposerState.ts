@@ -11,10 +11,12 @@ import type {
 } from 'react';
 import { useDropzone } from 'react-dropzone';
 
-import { authenticatedFetch } from '../../../utils/api';
+import { api, authenticatedFetch } from '../../../utils/api';
+import { thinkingModes } from '../constants/thinkingModes';
 import { grantClaudeToolPermission } from '../utils/chatPermissions';
 import { safeLocalStorage } from '../utils/chatStorage';
 import type {
+  ChatImage,
   ChatMessage,
   PendingPermissionRequest,
   PermissionMode,
@@ -59,6 +61,7 @@ interface UseChatComposerStateArgs {
   setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
   setIsUserScrolledUp: (isScrolledUp: boolean) => void;
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
+  activeSessionIsProcessing?: boolean;
 }
 
 interface MentionableFile {
@@ -75,71 +78,28 @@ interface CommandExecutionResult {
   hasFileIncludes?: boolean;
 }
 
-export type ModelCommandData = {
-  current?: {
-    provider?: string;
-    providerLabel?: string;
-    model?: string;
-  };
-  available?: Partial<Record<LLMProvider, string[]>>;
-  availableModels?: string[];
-  availableOptions?: Array<{
-    value: string;
-    label?: string;
-    description?: string;
-  }>;
-  defaultModel?: string;
-  cache?: ProviderModelsCacheInfo;
-};
-
-export type CostCommandData = {
-  tokenUsage?: {
-    used?: number;
-    total?: number;
-  };
-  tokenBreakdown?: {
-    input?: number;
-    output?: number;
-  };
-  provider?: string;
-  model?: string;
-};
-
-export type StatusCommandData = {
-  version?: string;
-  packageName?: string;
-  uptime?: string;
-  model?: string;
-  provider?: string;
-  nodeVersion?: string;
-  platform?: string;
-  pid?: number;
-  memoryUsage?: {
-    rssMb?: number;
-    heapUsedMb?: number;
-    heapTotalMb?: number;
-  };
-};
-
-export type HelpCommandData = {
-  content?: string;
-  format?: string;
-  commands?: Array<{
-    name: string;
-    description?: string;
-    namespace?: string;
-  }>;
-};
-
-export type CommandModalKind = 'help' | 'models' | 'cost' | 'status';
-
-export type CommandModalPayload = {
-  kind: CommandModalKind;
-  data: HelpCommandData | ModelCommandData | CostCommandData | StatusCommandData;
-};
+export interface QueuedChatMessage {
+  id: string;
+  sessionId: string;
+  provider: LLMProvider;
+  content: string;
+  permissionMode: string | null;
+  model: string | null;
+  metadata?: {
+    images?: ChatImage[];
+    [key: string]: unknown;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
+};
+
+const readApiData = async <T,>(response: Response): Promise<T> => {
+  const payload = await response.json();
+  return (payload?.data ?? payload) as T;
 };
 
 const getNotificationSessionSummary = (
@@ -190,6 +150,7 @@ export function useChatComposerState({
   setClaudeStatus,
   setIsUserScrolledUp,
   setPendingPermissionRequests,
+  activeSessionIsProcessing = false,
 }: UseChatComposerStateArgs) {
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && selectedProject) {
@@ -203,7 +164,9 @@ export function useChatComposerState({
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
-  const [commandModalPayload, setCommandModalPayload] = useState<CommandModalPayload | null>(null);
+  const [thinkingMode, setThinkingMode] = useState('none');
+  const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
+  const [isLoadingQueuedMessages, setIsLoadingQueuedMessages] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHighlightRef = useRef<HTMLDivElement>(null);
@@ -211,7 +174,11 @@ export function useChatComposerState({
     ((event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>) => Promise<void>) | null
   >(null);
   const inputValueRef = useRef(input);
+  const isLoadingRef = useRef(isLoading);
+  const autoSendingQueuedMessageRef = useRef(false);
+  const queueProcessingRef = useRef(false);
   const selectedProjectId = selectedProject?.projectId;
+  const activeQueueSessionId = currentSessionId || selectedSession?.id || null;
 
   const handleBuiltInCommand = useCallback(
     (result: CommandExecutionResult) => {
@@ -530,84 +497,197 @@ export function useChatComposerState({
     noKeyboard: true,
   });
 
-  const handleSubmit = useCallback(
-    async (
-      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
-    ) => {
-      event.preventDefault();
-      const currentInput = inputValueRef.current;
-      if (!currentInput.trim() || isLoading || !selectedProject) {
-        return;
+  const getCurrentModel = useCallback(() => {
+    if (provider === 'cursor') return cursorModel;
+    if (provider === 'codex') return codexModel;
+    if (provider === 'gemini') return geminiModel;
+    return claudeModel;
+  }, [claudeModel, codexModel, cursorModel, geminiModel, provider]);
+
+  const refreshQueuedMessages = useCallback(async (sessionId: string) => {
+    setIsLoadingQueuedMessages(true);
+    try {
+      const response = await api.queuedMessages(sessionId);
+      if (!response.ok) {
+        throw new Error(`Failed to load queued messages (${response.status})`);
+      }
+      const data = await readApiData<{ messages?: QueuedChatMessage[] }>(response);
+      setQueuedMessages(data.messages ?? []);
+    } catch (error) {
+      console.error('Error loading queued messages:', error);
+      setQueuedMessages([]);
+    } finally {
+      setIsLoadingQueuedMessages(false);
+    }
+  }, []);
+
+  const enqueueQueuedMessage = useCallback(async (
+    content: string,
+    metadata?: Record<string, unknown>,
+  ) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const response = await api.createQueuedMessage(activeQueueSessionId, {
+        content,
+        provider,
+        permissionMode,
+        model: getCurrentModel(),
+        metadata,
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to queue message (${response.status})`);
+      }
+      const data = await readApiData<{ message?: QueuedChatMessage }>(response);
+      if (data.message) {
+        setQueuedMessages((previous) => [...previous, data.message!]);
+      } else {
+        await refreshQueuedMessages(activeQueueSessionId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error queueing message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId, getCurrentModel, permissionMode, provider, refreshQueuedMessages]);
+
+  const updateQueuedMessage = useCallback(async (queueId: string, content: string) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const existing = queuedMessages.find((message) => message.id === queueId);
+      const response = await api.updateQueuedMessage(activeQueueSessionId, queueId, {
+        content,
+        provider: existing?.provider ?? provider,
+        permissionMode: existing?.permissionMode ?? permissionMode,
+        model: existing?.model ?? getCurrentModel(),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to update queued message (${response.status})`);
+      }
+      const data = await readApiData<{ message?: QueuedChatMessage }>(response);
+      if (data.message) {
+        setQueuedMessages((previous) =>
+          previous.map((message) => (message.id === queueId ? data.message! : message)),
+        );
+      } else {
+        await refreshQueuedMessages(activeQueueSessionId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error updating queued message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId, getCurrentModel, permissionMode, provider, queuedMessages, refreshQueuedMessages]);
+
+  const deleteQueuedMessage = useCallback(async (queueId: string) => {
+    if (!activeQueueSessionId) {
+      return false;
+    }
+
+    try {
+      const response = await api.deleteQueuedMessage(activeQueueSessionId, queueId);
+      if (!response.ok) {
+        throw new Error(`Failed to delete queued message (${response.status})`);
+      }
+      setQueuedMessages((previous) => previous.filter((message) => message.id !== queueId));
+      return true;
+    } catch (error) {
+      console.error('Error deleting queued message:', error);
+      return false;
+    }
+  }, [activeQueueSessionId]);
+
+  const resetComposerAfterHandledInput = useCallback(() => {
+    setInput('');
+    inputValueRef.current = '';
+    resetCommandMenuState();
+    setAttachedImages([]);
+    setUploadingImages(new Map());
+    setImageErrors(new Map());
+    setIsTextareaExpanded(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+    if (selectedProject) {
+      safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
+    }
+  }, [resetCommandMenuState, selectedProject]);
+
+  const uploadImages = useCallback(async (files: File[]): Promise<ChatImage[] | null> => {
+    if (!selectedProject || files.length === 0) {
+      return [];
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
+
+    try {
+      const response = await authenticatedFetch(`/api/projects/${selectedProject.projectId}/upload-images`, {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload images');
       }
 
-      // Intercept slash commands only when "/" is the first input character.
-      // Also accept exact "help" as a convenience alias for users who expect CLI-style help.
-      const commandInput = currentInput.trimEnd();
-      const isHelpAlias = commandInput.trim().toLowerCase() === 'help';
-      if (commandInput.startsWith('/') || isHelpAlias) {
-        const firstSpace = commandInput.indexOf(' ');
-        const commandName = isHelpAlias
-          ? '/help'
-          : firstSpace > 0 ? commandInput.slice(0, firstSpace) : commandInput;
-        const matchedCommand =
-          slashCommands.find((cmd: SlashCommand) => cmd.name === commandName) ||
-          (commandName === '/help'
-            ? ({
-                name: '/help',
-                description: 'Show help documentation for Claude Code',
-                namespace: 'builtin',
-                metadata: { type: 'builtin' },
-              } as SlashCommand)
-            : undefined);
-        if (matchedCommand && matchedCommand.type !== 'skill') {
-          executeCommand(matchedCommand, isHelpAlias ? '/help' : commandInput);
-          setInput('');
-          inputValueRef.current = '';
-          setAttachedImages([]);
-          setUploadingImages(new Map());
-          setImageErrors(new Map());
-          resetCommandMenuState();
-          setIsTextareaExpanded(false);
-          if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-          }
-          return;
-        }
+      const result = await response.json();
+      return Array.isArray(result.images) ? (result.images as ChatImage[]) : [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Image upload failed:', error);
+      addMessage({
+        type: 'error',
+        content: `Failed to upload images: ${message}`,
+        timestamp: new Date(),
+      });
+      return null;
+    }
+  }, [addMessage, selectedProject]);
+
+  const extractQueuedImages = useCallback((message: QueuedChatMessage): ChatImage[] => {
+    const images = message.metadata?.images;
+    if (!Array.isArray(images)) {
+      return [];
+    }
+    return images.filter(
+      (image): image is ChatImage =>
+        Boolean(
+          image
+          && typeof image === 'object'
+          && typeof (image as ChatImage).data === 'string'
+          && typeof (image as ChatImage).name === 'string',
+        ),
+    );
+  }, []);
+
+  const submitDirectMessage = useCallback(
+    async (
+      currentInput: string,
+      options?: {
+        images?: ChatImage[];
+        clearComposer?: boolean;
+      },
+    ): Promise<boolean> => {
+      if (!selectedProject) {
+        return false;
+      }
+
+      const shouldClearComposer = options?.clearComposer ?? true;
+      const uploadedImages = options?.images ?? (await uploadImages(attachedImages));
+      if (uploadedImages === null) {
+        return false;
       }
 
       const messageContent = currentInput;
-
-      let uploadedImages: unknown[] = [];
-      if (attachedImages.length > 0) {
-        const formData = new FormData();
-        attachedImages.forEach((file) => {
-          formData.append('images', file);
-        });
-
-        try {
-          const response = await authenticatedFetch(`/api/projects/${selectedProject.projectId}/upload-images`, {
-            method: 'POST',
-            headers: {},
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to upload images');
-          }
-
-          const result = await response.json();
-          uploadedImages = result.images;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Image upload failed:', error);
-          addMessage({
-            type: 'error',
-            content: `Failed to upload images: ${message}`,
-            timestamp: new Date(),
-          });
-          return;
-        }
-      }
 
       const effectiveSessionId =
         currentSessionId || selectedSession?.id || sessionStorage.getItem('cursorSessionId');
@@ -615,7 +695,7 @@ export function useChatComposerState({
       const userMessage: ChatMessage = {
         type: 'user',
         content: currentInput,
-        images: uploadedImages as any,
+        images: uploadedImages,
         timestamp: new Date(),
       };
 
@@ -751,52 +831,183 @@ export function useChatComposerState({
         });
       }
 
-      setInput('');
-      inputValueRef.current = '';
-      resetCommandMenuState();
-      setAttachedImages([]);
-      setUploadingImages(new Map());
-      setImageErrors(new Map());
-      setIsTextareaExpanded(false);
-
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
+      if (shouldClearComposer) {
+        resetComposerAfterHandledInput();
+        setThinkingMode('none');
       }
 
-      safeLocalStorage.removeItem(`draft_input_${selectedProject.projectId}`);
+      return true;
     },
     [
-      selectedSession,
+      addMessage,
       attachedImages,
       claudeModel,
       codexModel,
       currentSessionId,
       cursorModel,
-      executeCommand,
       geminiModel,
-      opencodeModel,
-      isLoading,
       onSessionActive,
       onSessionProcessing,
       pendingViewSessionRef,
       permissionMode,
       provider,
-      resetCommandMenuState,
+      resetComposerAfterHandledInput,
       scrollToBottom,
       selectedProject,
+      selectedSession,
       sendMessage,
       setCanAbortSession,
-      addMessage,
       setClaudeStatus,
       setIsLoading,
       setIsUserScrolledUp,
+      thinkingMode,
+      uploadImages,
+    ],
+  );
+
+  const handleSubmit = useCallback(
+    async (
+      event: FormEvent<HTMLFormElement> | MouseEvent | TouchEvent | KeyboardEvent<HTMLTextAreaElement>,
+    ) => {
+      event.preventDefault();
+      const currentInput = inputValueRef.current;
+      if (!currentInput.trim() || !selectedProject) {
+        return;
+      }
+
+      // Intercept slash commands only when "/" is the first input character.
+      const commandInput = currentInput.trimEnd();
+      if (commandInput.startsWith('/')) {
+        const firstSpace = commandInput.indexOf(' ');
+        const commandName = firstSpace > 0 ? commandInput.slice(0, firstSpace) : commandInput;
+        const matchedCommand = slashCommands.find((cmd: SlashCommand) => cmd.name === commandName);
+        if (matchedCommand && matchedCommand.type !== 'skill') {
+          executeCommand(matchedCommand, commandInput);
+          resetComposerAfterHandledInput();
+          return;
+        }
+      }
+
+      const shouldQueue =
+        isLoadingRef.current
+        || activeSessionIsProcessing
+        || autoSendingQueuedMessageRef.current
+        || queueProcessingRef.current;
+      if (shouldQueue) {
+        if (!activeQueueSessionId) {
+          addMessage({
+            type: 'error',
+            content: 'Session is still initializing. Please try again in a moment.',
+            timestamp: new Date(),
+          });
+          return;
+        }
+
+        const uploadedImages = await uploadImages(attachedImages);
+        if (uploadedImages === null) {
+          return;
+        }
+
+        const queued = await enqueueQueuedMessage(
+          currentInput,
+          uploadedImages.length > 0 ? { images: uploadedImages } : undefined,
+        );
+        if (!queued) {
+          addMessage({
+            type: 'error',
+            content: 'Failed to queue message. Please try again.',
+            timestamp: new Date(),
+          });
+          return;
+        }
+        resetComposerAfterHandledInput();
+        return;
+      }
+
+      await submitDirectMessage(currentInput);
+    },
+    [
+      activeQueueSessionId,
+      activeSessionIsProcessing,
+      addMessage,
+      attachedImages,
+      enqueueQueuedMessage,
+      executeCommand,
+      resetComposerAfterHandledInput,
+      selectedProject,
       slashCommands,
+      submitDirectMessage,
+      uploadImages,
     ],
   );
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
+
+  useEffect(() => {
+    if (!activeQueueSessionId) {
+      setQueuedMessages([]);
+      return;
+    }
+
+    void refreshQueuedMessages(activeQueueSessionId);
+  }, [activeQueueSessionId, refreshQueuedMessages]);
+
+  useEffect(() => {
+    if (
+      isLoading
+      || activeSessionIsProcessing
+      || !activeQueueSessionId
+      || queuedMessages.length === 0
+      || autoSendingQueuedMessageRef.current
+      || queueProcessingRef.current
+    ) {
+      return;
+    }
+
+    const nextMessage = queuedMessages[0];
+    autoSendingQueuedMessageRef.current = true;
+    queueProcessingRef.current = true;
+
+    void (async () => {
+      const deleted = await deleteQueuedMessage(nextMessage.id);
+      if (!deleted) {
+        autoSendingQueuedMessageRef.current = false;
+        queueProcessingRef.current = false;
+        return;
+      }
+
+      const queuedImages = extractQueuedImages(nextMessage);
+      const submitted = await submitDirectMessage(nextMessage.content, {
+        images: queuedImages,
+        clearComposer: false,
+      });
+      if (!submitted) {
+        await enqueueQueuedMessage(
+          nextMessage.content,
+          queuedImages.length > 0 ? { images: queuedImages } : undefined,
+        );
+      }
+      window.setTimeout(() => {
+        autoSendingQueuedMessageRef.current = false;
+        queueProcessingRef.current = false;
+      }, 250);
+    })();
+  }, [
+    activeQueueSessionId,
+    activeSessionIsProcessing,
+    deleteQueuedMessage,
+    enqueueQueuedMessage,
+    extractQueuedImages,
+    queuedMessages,
+    submitDirectMessage,
+    isLoading,
+  ]);
+
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
 
   useEffect(() => {
     inputValueRef.current = input;
@@ -1062,8 +1273,9 @@ export function useChatComposerState({
     handleGrantToolPermission,
     handleInputFocusChange,
     isInputFocused,
-    commandModalPayload,
-    closeCommandModal,
-    showCostModal,
+    queuedMessages,
+    isLoadingQueuedMessages,
+    updateQueuedMessage,
+    deleteQueuedMessage,
   };
 }

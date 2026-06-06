@@ -136,6 +136,12 @@ function ChatInterface({
     sessionStore,
   });
 
+  const activeViewSessionId = selectedSession?.id || currentSessionId;
+  const activeSessionIsProcessing = useMemo(
+    () => Boolean(activeViewSessionId && processingSessions?.has(activeViewSessionId)),
+    [activeViewSessionId, processingSessions],
+  );
+
   const {
     input,
     setInput,
@@ -176,10 +182,10 @@ function ChatInterface({
     handlePermissionDecision,
     handleGrantToolPermission,
     handleInputFocusChange,
-    isInputFocused: _isInputFocused,
-    commandModalPayload,
-    closeCommandModal,
-    showCostModal,
+    queuedMessages,
+    isLoadingQueuedMessages,
+    updateQueuedMessage,
+    deleteQueuedMessage,
   } = useChatComposerState({
     selectedProject,
     selectedSession,
@@ -210,6 +216,7 @@ function ChatInterface({
     setClaudeStatus,
     setIsUserScrolledUp,
     setPendingPermissionRequests,
+    activeSessionIsProcessing,
   });
 
   // On WebSocket reconnect, re-fetch the current session's messages from the server
@@ -427,6 +434,10 @@ function ChatInterface({
           })}
           isTextareaExpanded={isTextareaExpanded}
           sendByCtrlEnter={sendByCtrlEnter}
+          queuedMessages={queuedMessages}
+          isLoadingQueuedMessages={isLoadingQueuedMessages}
+          onUpdateQueuedMessage={updateQueuedMessage}
+          onDeleteQueuedMessage={deleteQueuedMessage}
         />
       </div>
 
