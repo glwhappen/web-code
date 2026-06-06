@@ -58,6 +58,10 @@ function readQueryStringValue(value: unknown): string {
     return value;
   }
 
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
   if (Array.isArray(value) && typeof value[0] === 'string') {
     return value[0];
   }
@@ -66,6 +70,10 @@ function readQueryStringValue(value: unknown): string {
 }
 
 function readOptionalNumericQueryValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
   const rawValue = readQueryStringValue(value).trim();
   if (!rawValue) {
     return null;
