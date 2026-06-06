@@ -2,9 +2,16 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
+// Map keys are namespaced by user id so the same session id can belong to
+// different users without colliding.
+function buildSessionKey(userId, sessionId) {
+  const safeUser = userId === null || userId === undefined ? 'unknown' : String(userId);
+  return `${safeUser}:${sessionId}`;
+}
+
 class SessionManager {
   constructor() {
-    // Store sessions in memory with conversation history
+    // Store sessions in memory keyed by `${userId}:${sessionId}`
     this.sessions = new Map();
     this.maxSessions = 100;
     this.sessionsDir = path.join(os.homedir(), '.gemini', 'sessions');
@@ -25,9 +32,10 @@ class SessionManager {
   }
 
   // Create a new session
-  createSession(sessionId, projectPath) {
+  createSession(userId, sessionId, projectPath) {
     const session = {
       id: sessionId,
+      userId: userId ?? null,
       projectPath: projectPath,
       messages: [],
       createdAt: new Date(),
@@ -40,19 +48,21 @@ class SessionManager {
       if (oldestKey) this.sessions.delete(oldestKey);
     }
 
-    this.sessions.set(sessionId, session);
-    this.saveSession(sessionId);
+    const key = buildSessionKey(userId, sessionId);
+    this.sessions.set(key, session);
+    this.saveSession(userId, sessionId);
 
     return session;
   }
 
   // Add a message to session
-  addMessage(sessionId, role, content) {
-    let session = this.sessions.get(sessionId);
+  addMessage(userId, sessionId, role, content) {
+    const key = buildSessionKey(userId, sessionId);
+    let session = this.sessions.get(key);
 
     if (!session) {
       // Create session if it doesn't exist
-      session = this.createSession(sessionId, '');
+      session = this.createSession(userId, sessionId, '');
     }
 
     const message = {
@@ -64,21 +74,25 @@ class SessionManager {
     session.messages.push(message);
     session.lastActivity = new Date();
 
-    this.saveSession(sessionId);
+    this.saveSession(userId, sessionId);
 
     return session;
   }
 
   // Get session by ID
-  getSession(sessionId) {
-    return this.sessions.get(sessionId);
+  getSession(userId, sessionId) {
+    return this.sessions.get(buildSessionKey(userId, sessionId));
   }
 
-  // Get all sessions for a project
-  getProjectSessions(projectPath) {
+  // Get all sessions for a project (scoped to user)
+  getProjectSessions(userId, projectPath) {
     const sessions = [];
+    const userPrefix = `${userId === null || userId === undefined ? 'unknown' : String(userId)}:`;
 
-    for (const [id, session] of this.sessions) {
+    for (const [key, session] of this.sessions) {
+      if (!key.startsWith(userPrefix)) {
+        continue;
+      }
       if (session.projectPath === projectPath) {
         sessions.push({
           id: session.id,
@@ -111,8 +125,8 @@ class SessionManager {
   }
 
   // Build conversation context for Gemini
-  buildConversationContext(sessionId, maxMessages = 10) {
-    const session = this.sessions.get(sessionId);
+  buildConversationContext(userId, sessionId, maxMessages = 10) {
+    const session = this.sessions.get(buildSessionKey(userId, sessionId));
 
     if (!session || session.messages.length === 0) {
       return '';
@@ -136,19 +150,23 @@ class SessionManager {
     return context;
   }
 
-  // Prevent path traversal
-  _safeFilePath(sessionId) {
+  // Prevent path traversal; persisted file name embeds the user id so each
+  // user keeps a separate on-disk record of the same session id.
+  _safeFilePath(userId, sessionId) {
     const safeId = String(sessionId).replace(/[/\\]|\.\./g, '');
-    return path.join(this.sessionsDir, `${safeId}.json`);
+    const safeUser = userId === null || userId === undefined
+      ? 'unknown'
+      : String(userId).replace(/[/\\]|\.\./g, '');
+    return path.join(this.sessionsDir, `${safeUser}-${safeId}.json`);
   }
 
   // Save session to disk
-  async saveSession(sessionId) {
-    const session = this.sessions.get(sessionId);
+  async saveSession(userId, sessionId) {
+    const session = this.sessions.get(buildSessionKey(userId, sessionId));
     if (!session) return;
 
     try {
-      const filePath = this._safeFilePath(sessionId);
+      const filePath = this._safeFilePath(userId, sessionId);
       await fs.writeFile(filePath, JSON.stringify(session, null, 2));
     } catch (error) {
       // console.error('Error saving session:', error);
@@ -174,7 +192,11 @@ class SessionManager {
               msg.timestamp = new Date(msg.timestamp);
             });
 
-            this.sessions.set(session.id, session);
+            // Legacy files without `userId` get bucketed under "unknown" so
+            // pre-existing sessions remain reachable until they are rewritten.
+            const userId = session.userId ?? null;
+            const key = buildSessionKey(userId, session.id);
+            this.sessions.set(key, session);
           } catch (error) {
             // console.error(`Error loading session ${file}:`, error);
           }
@@ -192,11 +214,11 @@ class SessionManager {
   }
 
   // Delete a session
-  async deleteSession(sessionId) {
-    this.sessions.delete(sessionId);
+  async deleteSession(userId, sessionId) {
+    this.sessions.delete(buildSessionKey(userId, sessionId));
 
     try {
-      const filePath = this._safeFilePath(sessionId);
+      const filePath = this._safeFilePath(userId, sessionId);
       await fs.unlink(filePath);
     } catch (error) {
       // console.error('Error deleting session file:', error);
@@ -204,8 +226,8 @@ class SessionManager {
   }
 
   // Get session messages for display
-  getSessionMessages(sessionId) {
-    const session = this.sessions.get(sessionId);
+  getSessionMessages(userId, sessionId) {
+    const session = this.sessions.get(buildSessionKey(userId, sessionId));
     if (!session) return [];
 
     return session.messages.map(msg => ({

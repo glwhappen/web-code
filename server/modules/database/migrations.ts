@@ -57,16 +57,20 @@ const migrateLegacySessionNames = (db: Database): void => {
   if (hasSessionsTable) {
     console.log('Running migration: Merging session_names into sessions');
     db.exec(`
-      INSERT INTO sessions (session_id, provider, custom_name, created_at, updated_at)
+      INSERT INTO sessions (session_id, user_id, provider, custom_name, created_at, updated_at)
       SELECT
         session_id,
+        COALESCE(
+          (SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1),
+          1
+        ),
         COALESCE(provider, 'claude'),
         custom_name,
         COALESCE(created_at, CURRENT_TIMESTAMP),
         COALESCE(updated_at, CURRENT_TIMESTAMP)
       FROM session_names
       WHERE true
-      ON CONFLICT(session_id) DO UPDATE SET
+      ON CONFLICT(user_id, session_id) DO UPDATE SET
         provider = excluded.provider,
         custom_name = COALESCE(excluded.custom_name, sessions.custom_name),
         created_at = COALESCE(sessions.created_at, excluded.created_at),
@@ -89,20 +93,24 @@ const migrateLegacyWorkspaceTableIntoProjects = (db: Database): void => {
 
   console.log('Running migration: Migrating workspace_original_paths data into projects');
   db.exec(`
-    INSERT INTO projects (project_id, project_path, custom_project_name, isStarred, isArchived)
+    INSERT INTO projects (project_id, user_id, project_path, custom_project_name, isStarred, isArchived)
     SELECT
       CASE
         WHEN workspace_id IS NULL OR trim(workspace_id) = ''
         THEN ${SQLITE_UUID_SQL}
         ELSE workspace_id
       END,
+      COALESCE(
+        (SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1),
+        1
+      ),
       workspace_path,
       custom_workspace_name,
       COALESCE(isStarred, 0),
       0
     FROM workspace_original_paths
     WHERE workspace_path IS NOT NULL AND trim(workspace_path) <> ''
-    ON CONFLICT(project_path) DO UPDATE SET
+    ON CONFLICT(user_id, project_path) DO UPDATE SET
       custom_project_name = COALESCE(projects.custom_project_name, excluded.custom_project_name),
       isStarred = COALESCE(projects.isStarred, excluded.isStarred)
   `);
@@ -121,7 +129,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
     (column) => column.name === 'project_id' && column.pk === 1,
   );
 
-  if (hasProjectIdPrimaryKey) {
+  const shouldRebuild = !hasProjectIdPrimaryKey || !columnNames.includes('user_id');
+
+  if (!shouldRebuild) {
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'custom_project_name', 'TEXT DEFAULT NULL');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'isStarred', 'BOOLEAN DEFAULT 0');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'isArchived', 'BOOLEAN DEFAULT 0');
@@ -133,13 +143,17 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
     return;
   }
 
-  console.log('Running migration: Rebuilding projects table to enforce project_id primary key');
+  console.log('Running migration: Rebuilding projects table to enforce user_id + project_id primary key schema');
 
   const projectPathExpression = columnNames.includes('project_path')
     ? 'project_path'
     : columnNames.includes('workspace_path')
       ? 'workspace_path'
       : 'NULL';
+
+  const userIdExpression = columnNames.includes('user_id')
+    ? 'user_id'
+    : 'COALESCE((SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1), 1)';
 
   const customProjectNameExpression = columnNames.includes('custom_project_name')
     ? 'custom_project_name'
@@ -166,15 +180,19 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
     db.exec(`
       CREATE TABLE projects__new (
         project_id TEXT PRIMARY KEY NOT NULL,
-        project_path TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        project_path TEXT NOT NULL,
         custom_project_name TEXT DEFAULT NULL,
         isStarred BOOLEAN DEFAULT 0,
-        isArchived BOOLEAN DEFAULT 0
+        isArchived BOOLEAN DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, project_path)
       )
     `);
     db.exec(`
       WITH source_rows AS (
         SELECT
+          ${userIdExpression} AS user_id,
           ${projectPathExpression} AS project_path,
           ${customProjectNameExpression} AS custom_project_name,
           ${isStarredExpression} AS isStarred,
@@ -186,13 +204,14 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
       ),
       deduped_paths AS (
         SELECT
+          user_id,
           project_path,
           custom_project_name,
           isStarred,
           isArchived,
           candidate_project_id,
           source_rowid,
-          ROW_NUMBER() OVER (PARTITION BY project_path ORDER BY source_rowid) AS project_path_rank
+          ROW_NUMBER() OVER (PARTITION BY user_id, project_path ORDER BY source_rowid) AS project_path_rank
         FROM source_rows
       ),
       prepared_rows AS (
@@ -202,6 +221,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
             THEN candidate_project_id
             ELSE ${SQLITE_UUID_SQL}
           END AS project_id,
+          user_id,
           project_path,
           custom_project_name,
           isStarred,
@@ -211,6 +231,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
       )
       INSERT INTO projects__new (
         project_id,
+        user_id,
         project_path,
         custom_project_name,
         isStarred,
@@ -218,6 +239,7 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
       )
       SELECT
         project_id,
+        user_id,
         project_path,
         custom_project_name,
         isStarred,
@@ -251,8 +273,10 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
 
   const shouldRebuild =
     !columnNames.includes('project_path') ||
-    primaryKeyColumns.length !== 1 ||
-    primaryKeyColumns[0] !== 'session_id' ||
+    !columnNames.includes('user_id') ||
+    primaryKeyColumns.length !== 2 ||
+    primaryKeyColumns[0] !== 'user_id' ||
+    primaryKeyColumns[1] !== 'session_id' ||
     !columnNames.includes('provider');
 
   if (!shouldRebuild) {
@@ -277,6 +301,10 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
   const providerExpression = columnNames.includes('provider')
     ? "COALESCE(provider, 'claude')"
     : "'claude'";
+
+  const userIdExpression = columnNames.includes('user_id')
+    ? 'user_id'
+    : 'COALESCE((SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1), 1)';
 
   const customNameExpression = columnNames.includes('custom_name')
     ? 'custom_name'
@@ -305,6 +333,7 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
     db.exec(`
       CREATE TABLE sessions__new (
         session_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
         provider TEXT NOT NULL DEFAULT 'claude',
         custom_name TEXT,
         project_path TEXT,
@@ -312,9 +341,10 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
         isArchived BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (session_id),
-        FOREIGN KEY (project_path) REFERENCES projects(project_path)
-        ON DELETE SET NULL
+        PRIMARY KEY (user_id, session_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id, project_path) REFERENCES projects(user_id, project_path)
+        ON DELETE CASCADE
         ON UPDATE CASCADE
       )
     `);
@@ -322,6 +352,7 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
       WITH source_rows AS (
         SELECT
           session_id,
+          ${userIdExpression} AS user_id,
           ${providerExpression} AS provider,
           ${customNameExpression} AS custom_name,
           ${projectPathExpression} AS project_path,
@@ -336,6 +367,7 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
       ranked_rows AS (
         SELECT
           session_id,
+          user_id,
           provider,
           custom_name,
           project_path,
@@ -344,13 +376,14 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
           created_at,
           updated_at,
           ROW_NUMBER() OVER (
-            PARTITION BY session_id
+            PARTITION BY user_id, session_id
             ORDER BY datetime(COALESCE(updated_at, created_at)) DESC, source_rowid DESC
           ) AS session_rank
         FROM source_rows
       )
       INSERT INTO sessions__new (
         session_id,
+        user_id,
         provider,
         custom_name,
         project_path,
@@ -361,6 +394,7 @@ const rebuildSessionsTableWithProjectSchema = (db: Database): void => {
       )
       SELECT
         session_id,
+        user_id,
         provider,
         custom_name,
         project_path,
@@ -388,16 +422,17 @@ const ensureProjectsForSessionPaths = (db: Database): void => {
   }
 
   db.exec(`
-    INSERT INTO projects (project_id, project_path, custom_project_name, isStarred, isArchived)
+    INSERT INTO projects (project_id, user_id, project_path, custom_project_name, isStarred, isArchived)
     SELECT
       ${SQLITE_UUID_SQL},
+      user_id,
       project_path,
       NULL,
       0,
       0
     FROM sessions
     WHERE project_path IS NOT NULL AND trim(project_path) <> ''
-    ON CONFLICT(project_path) DO NOTHING
+    ON CONFLICT(user_id, project_path) DO NOTHING
   `);
 };
 
@@ -430,9 +465,12 @@ export const runMigrations = (db: Database) => {
     migrateLegacySessionNames(db);
     ensureProjectsForSessionPaths(db);
 
-    db.exec('CREATE INDEX IF NOT EXISTS idx_session_ids_lookup ON sessions(session_id)');
-    db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_project_path ON sessions(project_path)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_session_ids_lookup ON sessions(user_id, session_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_project_path ON sessions(user_id, project_path)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_is_archived ON sessions(isArchived)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_projects_user_path ON projects(user_id, project_path)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_projects_is_starred ON projects(isStarred)');
     db.exec('CREATE INDEX IF NOT EXISTS idx_projects_is_archived ON projects(isArchived)');
 

@@ -36,8 +36,8 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Scans Gemini legacy JSON and new JSONL artifacts and upserts sessions into DB.
    */
-  async synchronize(since?: Date): Promise<number> {
-    const projectHashLookup = this.buildProjectHashLookup();
+  async synchronize(since: Date | undefined, ownerUserId: number): Promise<number> {
+    const projectHashLookup = this.buildProjectHashLookup(ownerUserId);
 
     // const legacySessionFiles = await findFilesRecursivelyCreatedAfter(
     //   path.join(this.geminiHome, 'sessions'),
@@ -88,6 +88,7 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
 
       const timestamps = await readFileTimestamps(filePath);
       sessionsDb.createSession(
+        ownerUserId,
         parsed.sessionId,
         this.provider,
         parsed.projectPath,
@@ -105,7 +106,7 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Parses and upserts one Gemini legacy JSON or JSONL artifact.
    */
-  async synchronizeFile(filePath: string): Promise<string | null> {
+  async synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null> {
     if (!filePath.endsWith('.json') && !filePath.endsWith('.jsonl')) {
       return null;
     }
@@ -115,7 +116,7 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
     }
 
     const parsed = filePath.endsWith('.jsonl')
-      ? await this.processJsonlSessionFile(filePath, this.buildProjectHashLookup())
+      ? await this.processJsonlSessionFile(filePath, this.buildProjectHashLookup(ownerUserId))
       : await this.processLegacySessionFile(filePath);
     if (!parsed) {
       return null;
@@ -123,6 +124,7 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
 
     const timestamps = await readFileTimestamps(filePath);
     return sessionsDb.createSession(
+      ownerUserId,
       parsed.sessionId,
       this.provider,
       parsed.projectPath,
@@ -300,17 +302,17 @@ export class GeminiSessionSynchronizer implements IProviderSessionSynchronizer {
   /**
    * Builds a hash->path lookup for Gemini JSONL metadata that stores projectHash.
    */
-  private buildProjectHashLookup(): Map<string, string> {
+  private buildProjectHashLookup(ownerUserId: number): Map<string, string> {
     const lookup = new Map<string, string>();
     const knownPaths = new Set<string>();
 
-    for (const project of projectsDb.getProjectPaths()) {
+    for (const project of projectsDb.getProjectPaths(ownerUserId)) {
       if (typeof project.project_path === 'string' && project.project_path.trim()) {
         knownPaths.add(project.project_path.trim());
       }
     }
 
-    for (const session of sessionsDb.getAllSessions()) {
+    for (const session of sessionsDb.getAllSessions(ownerUserId)) {
       if (session.provider === this.provider && typeof session.project_path === 'string' && session.project_path.trim()) {
         knownPaths.add(session.project_path.trim());
       }

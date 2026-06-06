@@ -17,6 +17,29 @@ import { AppError, asyncHandler, createApiSuccessResponse } from '@/shared/utils
 
 const router = express.Router();
 
+type AuthenticatedUser = {
+  id?: number | string;
+};
+
+function getAuthenticatedUserId(req: Request): number {
+  const authenticatedUser = (req as Request & { user?: AuthenticatedUser }).user;
+  const rawId = authenticatedUser?.id;
+  if (rawId === undefined || rawId === null) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  const numericId = typeof rawId === 'number' ? rawId : Number.parseInt(String(rawId), 10);
+  if (Number.isNaN(numericId)) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTHENTICATION_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  return numericId;
+}
+
 const readPathParam = (value: unknown, name: string): string => {
   if (typeof value === 'string') {
     return value;
@@ -385,8 +408,9 @@ router.post(
 // ----------------- Session routes -----------------
 router.get(
   '/sessions/archived',
-  asyncHandler(async (_req: Request, res: Response) => {
-    const sessions = sessionsService.listArchivedSessions();
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
+    const sessions = sessionsService.listArchivedSessions(userId);
     res.json(createApiSuccessResponse({ sessions }));
   }),
 );
@@ -394,10 +418,11 @@ router.get(
 router.delete(
   '/sessions/:sessionId',
   asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
     const sessionId = parseSessionId(req.params.sessionId);
     const force = parseOptionalBooleanQuery(req.query.force, 'force') ?? false;
     const deletedFromDisk = parseOptionalBooleanQuery(req.query.deletedFromDisk, 'deletedFromDisk') ?? force;
-    const result = await sessionsService.deleteOrArchiveSessionById(sessionId, {
+    const result = await sessionsService.deleteOrArchiveSessionById(userId, sessionId, {
       force,
       deletedFromDisk,
     });
@@ -408,8 +433,9 @@ router.delete(
 router.post(
   '/sessions/:sessionId/restore',
   asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
     const sessionId = parseSessionId(req.params.sessionId);
-    const result = sessionsService.restoreSessionById(sessionId);
+    const result = sessionsService.restoreSessionById(userId, sessionId);
     res.json(createApiSuccessResponse(result));
   }),
 );
@@ -417,9 +443,10 @@ router.post(
 router.put(
   '/sessions/:sessionId',
   asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
     const sessionId = parseSessionId(req.params.sessionId);
     const summary = parseSessionRenameSummary(req.body);
-    const result = sessionsService.renameSessionById(sessionId, summary);
+    const result = sessionsService.renameSessionById(userId, sessionId, summary);
     res.json(createApiSuccessResponse(result));
   }),
 );
@@ -427,6 +454,7 @@ router.put(
 router.get(
   '/sessions/:sessionId/messages',
   asyncHandler(async (req: Request, res: Response) => {
+    const userId = getAuthenticatedUserId(req);
     const sessionId = parseSessionId(req.params.sessionId);
     const limitRaw = readOptionalQueryString(req.query.limit);
     const offsetRaw = readOptionalQueryString(req.query.offset);
@@ -455,7 +483,7 @@ router.get(
       offset = parsedOffset;
     }
 
-    const result = await sessionsService.fetchHistory(sessionId, {
+    const result = await sessionsService.fetchHistory(userId, sessionId, {
       limit,
       offset,
     });
@@ -464,6 +492,7 @@ router.get(
 );
 
 router.get('/search/sessions', asyncHandler(async (req: Request, res: Response) => {
+  const userId = getAuthenticatedUserId(req);
   const query = parseSessionSearchQuery(req.query.q);
   const limit = parseSessionSearchLimit(req.query.limit);
 
@@ -483,6 +512,7 @@ router.get('/search/sessions', asyncHandler(async (req: Request, res: Response) 
 
   try {
     await sessionConversationsSearchService.search({
+      userId,
       query,
       limit,
       signal: abortController.signal,

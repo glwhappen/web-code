@@ -13,9 +13,11 @@ type ProjectRow = {
   isArchived: number;
 };
 
+const TEST_USER_ID = 1;
+
 test('toggleProjectStar throws when projectId is missing', () => {
   assert.throws(
-    () => toggleProjectStar('   '),
+    () => toggleProjectStar(TEST_USER_ID, '   '),
     (error: unknown) =>
       error instanceof AppError
       && error.code === 'PROJECT_ID_REQUIRED'
@@ -28,7 +30,7 @@ test('toggleProjectStar throws when project does not exist', () => {
   try {
     projectsDb.getProjectById = () => null;
     assert.throws(
-      () => toggleProjectStar('project-1'),
+      () => toggleProjectStar(TEST_USER_ID, 'project-1'),
       (error: unknown) =>
         error instanceof AppError
         && error.code === 'PROJECT_NOT_FOUND'
@@ -43,6 +45,7 @@ test('toggleProjectStar flips star state and persists it', () => {
   const originalGetProjectById = projectsDb.getProjectById;
   const originalUpdateProjectIsStarredById = projectsDb.updateProjectIsStarredById;
 
+  let capturedUserId = 0;
   let capturedProjectId = '';
   let capturedState = false;
 
@@ -55,14 +58,16 @@ test('toggleProjectStar flips star state and persists it', () => {
         isStarred: 0,
         isArchived: 0,
       }) as ProjectRow;
-    projectsDb.updateProjectIsStarredById = (projectId: string, isStarred: boolean) => {
+    projectsDb.updateProjectIsStarredById = (userId: number, projectId: string, isStarred: boolean) => {
+      capturedUserId = userId;
       capturedProjectId = projectId;
       capturedState = isStarred;
     };
 
-    const result = toggleProjectStar('project-1');
+    const result = toggleProjectStar(TEST_USER_ID, 'project-1');
 
     assert.equal(result.isStarred, true);
+    assert.equal(capturedUserId, TEST_USER_ID);
     assert.equal(capturedProjectId, 'project-1');
     assert.equal(capturedState, true);
   } finally {
@@ -78,7 +83,7 @@ test('applyLegacyStarredProjectIds stars only valid, unstarred projects', () => 
   const updatedProjectIds: string[] = [];
 
   try {
-    projectsDb.getProjectById = (projectId: string) => {
+    projectsDb.getProjectById = (_userId: number, projectId: string) => {
       if (projectId === 'project-a') {
         return {
           project_id: 'project-a',
@@ -101,11 +106,11 @@ test('applyLegacyStarredProjectIds stars only valid, unstarred projects', () => 
 
       return null;
     };
-    projectsDb.updateProjectIsStarredById = (projectId: string) => {
+    projectsDb.updateProjectIsStarredById = (_userId: number, projectId: string) => {
       updatedProjectIds.push(projectId);
     };
 
-    const result = applyLegacyStarredProjectIds([
+    const result = applyLegacyStarredProjectIds(TEST_USER_ID, [
       'project-a',
       'project-b',
       'missing-project',

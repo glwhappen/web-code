@@ -84,7 +84,7 @@ export default function SetupForm() {
     <AuthScreenLayout
       title="Welcome to CloudCLI"
       description="Set up your account to get started"
-      footerText="This is a single-user system. Only one account can be created."
+      footerText="Create the administrator account to get started. Additional users can be invited later."
       logo={<img src="/logo.svg" alt="CloudCLI" className="h-16 w-16" />}
     >
       <form onSubmit={handleSubmit} className="space-y-4">

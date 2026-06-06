@@ -140,6 +140,7 @@ test('startCloneProject completes and emits complete payload when git exits succ
   const gitProcess = createMockGitProcess();
   const progressMessages: string[] = [];
   let completePayload: { project: Record<string, unknown>; message: string } | null = null;
+  let capturedUserId = 0;
   let capturedProjectPath = '';
   let capturedCustomName = '';
 
@@ -159,7 +160,8 @@ test('startCloneProject completes and emits complete payload when git exits succ
     },
     buildDependencies({
       spawnGitClone: () => gitProcess as any,
-      registerProject: async (projectPath, customName) => {
+      registerProject: async (userId, projectPath, customName) => {
+        capturedUserId = userId;
         capturedProjectPath = projectPath;
         capturedCustomName = customName;
         return { project: { projectId: 'project-1', path: projectPath } };
@@ -171,6 +173,7 @@ test('startCloneProject completes and emits complete payload when git exits succ
   await operation.waitForCompletion;
 
   assert.ok(progressMessages.some((message) => message.includes("Cloning into 'repo'")));
+  assert.equal(capturedUserId, 1);
   assert.equal(capturedCustomName, 'repo');
   assert.equal(path.basename(capturedProjectPath), 'repo');
   assert.notEqual(completePayload, null);

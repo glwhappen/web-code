@@ -14,7 +14,7 @@ export const sessionSynchronizerService = {
   /**
    * Runs all provider synchronizers and updates scan_state.last_scanned_at.
    */
-  async synchronizeSessions(): Promise<SessionSynchronizeResult> {
+  async synchronizeSessions(ownerUserId: number): Promise<SessionSynchronizeResult> {
     const lastScanAt = scanStateDb.getLastScannedAt();
     const scanBoundary = new Date();
     const processedByProvider: Record<LLMProvider, number> = {
@@ -29,7 +29,7 @@ export const sessionSynchronizerService = {
     const results = await Promise.allSettled(
       providerRegistry.listProviders().map(async (provider) => ({
         provider: provider.id,
-        processed: await provider.sessionSynchronizer.synchronize(lastScanAt ?? undefined),
+        processed: await provider.sessionSynchronizer.synchronize(lastScanAt ?? undefined, ownerUserId),
       }))
     );
 
@@ -61,11 +61,12 @@ export const sessionSynchronizerService = {
    * Indexes one provider artifact file without running a full provider rescan.
    */
   async synchronizeProviderFile(
+    ownerUserId: number,
     provider: LLMProvider,
     filePath: string
   ): Promise<{ provider: LLMProvider; indexed: boolean; sessionId: string | null }> {
     const resolvedProvider = providerRegistry.resolveProvider(provider);
-    const sessionId = await resolvedProvider.sessionSynchronizer.synchronizeFile(filePath);
+    const sessionId = await resolvedProvider.sessionSynchronizer.synchronizeFile(filePath, ownerUserId);
     return {
       provider,
       indexed: Boolean(sessionId),

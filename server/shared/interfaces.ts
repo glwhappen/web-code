@@ -147,10 +147,10 @@ export interface IProviderSessionSynchronizer {
   /**
    * Scans provider session artifacts and upserts discovered sessions into DB.
    */
-  synchronize(since?: Date): Promise<number>;
+  synchronize(since: Date | undefined, ownerUserId: number): Promise<number>;
 
   /**
    * Parses and upserts one provider artifact file without running a full scan.
    */
-  synchronizeFile(filePath: string): Promise<string | null>;
+  synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null>;
 }

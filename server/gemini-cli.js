@@ -121,11 +121,7 @@ async function buildGeminiProcessEnv() {
 
 async function spawnGemini(command, options = {}, ws) {
     const { sessionId, projectPath, cwd, toolsSettings, permissionMode, images, sessionSummary } = options;
-    const resolvedModel = await providerModelsService.resolveResumeModel(
-        'gemini',
-        sessionId,
-        options.model
-    );
+    const userId = ws?.userId ?? null;
     let capturedSessionId = sessionId; // Track session ID throughout the process
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let assistantBlocks = []; // Accumulate the full response blocks including tools
@@ -147,7 +143,7 @@ async function spawnGemini(command, options = {}, ws) {
 
     // If we have a sessionId, we want to resume
     if (sessionId) {
-        const session = sessionManager.getSession(sessionId);
+        const session = userId !== null ? sessionManager.getSession(userId, sessionId) : null;
         if (session && session.cliSessionId) {
             args.push('--resume', session.cliSessionId);
         }
@@ -352,8 +348,8 @@ async function spawnGemini(command, options = {}, ws) {
         startTimeout();
 
         // Save user message to session when starting
-        if (command && capturedSessionId) {
-            sessionManager.addMessage(capturedSessionId, 'user', command);
+        if (command && capturedSessionId && userId !== null) {
+            sessionManager.addMessage(userId, capturedSessionId, 'user', command);
         }
 
         // Create response handler for NDJSON buffering
@@ -376,12 +372,12 @@ async function spawnGemini(command, options = {}, ws) {
                     });
                 },
                 onToolResult: (event) => {
-                    if (capturedSessionId) {
+                    if (capturedSessionId && userId !== null) {
                         if (assistantBlocks.length > 0) {
-                            sessionManager.addMessage(capturedSessionId, 'assistant', [...assistantBlocks]);
+                            sessionManager.addMessage(userId, capturedSessionId, 'assistant', [...assistantBlocks]);
                             assistantBlocks = [];
                         }
-                        sessionManager.addMessage(capturedSessionId, 'user', [{
+                        sessionManager.addMessage(userId, capturedSessionId, 'user', [{
                             type: 'tool_result',
                             tool_use_id: event.tool_id,
                             content: event.output === undefined ? null : event.output,
@@ -401,9 +397,11 @@ async function spawnGemini(command, options = {}, ws) {
                     if (!capturedSessionId) {
                         capturedSessionId = discoveredSessionId;
 
-                        sessionManager.createSession(capturedSessionId, cwd || process.cwd());
-                        if (command) {
-                            sessionManager.addMessage(capturedSessionId, 'user', command);
+                        if (userId !== null) {
+                            sessionManager.createSession(userId, capturedSessionId, cwd || process.cwd());
+                            if (command) {
+                                sessionManager.addMessage(userId, capturedSessionId, 'user', command);
+                            }
                         }
 
                         if (processKey !== capturedSessionId) {
@@ -423,10 +421,12 @@ async function spawnGemini(command, options = {}, ws) {
                         }
                     }
 
-                    const sess = sessionManager.getSession(capturedSessionId);
-                    if (sess && !sess.cliSessionId) {
-                        sess.cliSessionId = discoveredSessionId;
-                        sessionManager.saveSession(capturedSessionId);
+                    if (userId !== null) {
+                        const sess = sessionManager.getSession(userId, capturedSessionId);
+                        if (sess && !sess.cliSessionId) {
+                            sess.cliSessionId = discoveredSessionId;
+                            sessionManager.saveSession(userId, capturedSessionId);
+                        }
                     }
                 }
             });
@@ -482,8 +482,8 @@ async function spawnGemini(command, options = {}, ws) {
             activeGeminiProcesses.delete(finalSessionId);
 
             // Save assistant response to session if we have one
-            if (finalSessionId && assistantBlocks.length > 0) {
-                sessionManager.addMessage(finalSessionId, 'assistant', assistantBlocks);
+            if (finalSessionId && assistantBlocks.length > 0 && userId !== null) {
+                sessionManager.addMessage(userId, finalSessionId, 'assistant', assistantBlocks);
             }
 
             ws.send(createNormalizedMessage({ kind: 'complete', exitCode: code, isNewSession: !sessionId && !!command, sessionId: finalSessionId, provider: 'gemini' }));

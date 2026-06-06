@@ -127,7 +127,7 @@ const wss = createWebSocketServer(server, {
         getActiveOpenCodeSessions,
     },
     shell: {
-        getSessionById: (sessionId) => sessionManager.getSession(sessionId),
+        getSessionById: (userId, sessionId) => sessionManager.getSession(userId, sessionId),
         stripAnsiSequences,
         normalizeDetectedUrl,
         extractUrlsFromText,
@@ -447,7 +447,7 @@ app.get('/api/projects/:projectId/file', authenticateToken, async (req, res) => 
 
         // Resolve the absolute project root via the DB-backed helper; the
         // caller passes the DB-assigned `projectId`, not a folder name.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -488,7 +488,7 @@ app.get('/api/projects/:projectId/files/content', authenticateToken, async (req,
         }
 
         // Projects are now addressed by DB `projectId`, resolved to their path here.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -550,7 +550,7 @@ app.put('/api/projects/:projectId/file', authenticateToken, async (req, res) => 
         }
 
         // Projects are now addressed by DB `projectId`, resolved to their path here.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -591,7 +591,7 @@ app.get('/api/projects/:projectId/files', authenticateToken, async (req, res) =>
 
         // Resolve the project's absolute path through the DB (projectId is the
         // primary key of the `projects` table after the identifier migration).
-        const actualPath = await projectsDb.getProjectPathById(req.params.projectId);
+        const actualPath = await projectsDb.getProjectPathById(req.user.id, req.params.projectId);
         if (!actualPath) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -679,7 +679,7 @@ app.post('/api/projects/:projectId/files/create', authenticateToken, async (req,
         }
 
         // Resolve the project directory through the DB using the new projectId.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -752,7 +752,7 @@ app.put('/api/projects/:projectId/files/rename', authenticateToken, async (req, 
         }
 
         // Resolve the project directory through the DB using the new projectId.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -824,7 +824,7 @@ app.delete('/api/projects/:projectId/files', authenticateToken, async (req, res)
         }
 
         // Resolve the project directory through the DB using the new projectId.
-        const projectRoot = await projectsDb.getProjectPathById(projectId);
+        const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectRoot) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -942,7 +942,7 @@ const uploadFilesHandler = async (req, res) => {
             }
 
             // Resolve the project directory through the DB using the new projectId.
-            const projectRoot = await projectsDb.getProjectPathById(projectId);
+            const projectRoot = await projectsDb.getProjectPathById(req.user.id, projectId);
             if (!projectRoot) {
                 return res.status(404).json({ error: 'Project not found' });
             }
@@ -1356,7 +1356,7 @@ app.get('/api/projects/:projectId/sessions/:sessionId/token-usage', authenticate
         // `projectId`. Legacy code here called extractProjectDirectory with a
         // folder-encoded project name; the migration centralizes that lookup
         // in the projects table.
-        const projectPath = await projectsDb.getProjectPathById(projectId);
+        const projectPath = await projectsDb.getProjectPathById(req.user.id, projectId);
         if (!projectPath) {
             return res.status(404).json({ error: 'Project not found' });
         }

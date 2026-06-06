@@ -57,12 +57,13 @@ function extractCodexTextContent(content: unknown): string {
 }
 
 async function getCodexSessionMessages(
+  userId: number,
   sessionId: string,
   limit: number | null = null,
   offset = 0,
 ): Promise<CodexHistoryResult> {
   try {
-    const sessionFilePath = sessionsDb.getSessionById(sessionId)?.jsonl_path;
+    const sessionFilePath = sessionsDb.getSessionById(userId, sessionId)?.jsonl_path;
 
     if (!sessionFilePath) {
       console.warn(`Codex session file not found for session ${sessionId}`);
@@ -516,13 +517,18 @@ export class CodexSessionsProvider implements IProviderSessions {
     sessionId: string,
     options: FetchHistoryOptions = {},
   ): Promise<FetchHistoryResult> {
-    const { limit = null, offset = 0 } = options;
+    const { limit = null, offset = 0, userId } = options;
+
+    if (typeof userId !== 'number') {
+      console.warn(`[CodexProvider] fetchHistory called without userId for session ${sessionId}`);
+      return { messages: [], total: 0, hasMore: false, offset: 0, limit: null };
+    }
 
     let result: CodexHistoryResult;
     try {
       // Load full history first so `total` reflects frontend-normalized messages,
       // not raw JSONL records.
-      result = await getCodexSessionMessages(sessionId, null, 0);
+      result = await getCodexSessionMessages(userId, sessionId, null, 0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[CodexProvider] Failed to load session ${sessionId}:`, message);

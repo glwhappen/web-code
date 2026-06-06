@@ -95,10 +95,11 @@ export const sessionsService = {
    * session metadata in the database.
    */
   fetchHistory(
+    userId: number,
     sessionId: string,
     options: Pick<FetchHistoryOptions, 'limit' | 'offset'> = {},
   ): Promise<FetchHistoryResult> {
-    const session = sessionsDb.getSessionById(sessionId);
+    const session = sessionsDb.getSessionById(userId, sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
         code: 'SESSION_NOT_FOUND',
@@ -111,6 +112,7 @@ export const sessionsService = {
       limit: options.limit ?? null,
       offset: options.offset ?? 0,
       projectPath: session.project_path ?? '',
+      userId,
     });
   },
 
@@ -118,8 +120,8 @@ export const sessionsService = {
    * Returns archived sessions with enough project metadata for the sidebar to
    * group, filter, open, and restore them without a per-row follow-up query.
    */
-  listArchivedSessions(): ArchivedSessionListItem[] {
-    const archivedSessions = sessionsDb.getArchivedSessions();
+  listArchivedSessions(userId: number): ArchivedSessionListItem[] {
+    const archivedSessions = sessionsDb.getArchivedSessions(userId);
     const projectCache = new Map<string, ReturnType<typeof projectsDb.getProjectPath>>();
 
     return archivedSessions.map((session) => {
@@ -128,7 +130,7 @@ export const sessionsService = {
 
       if (projectPath) {
         if (!projectCache.has(projectPath)) {
-          projectCache.set(projectPath, projectsDb.getProjectPath(projectPath));
+          projectCache.set(projectPath, projectsDb.getProjectPath(userId, projectPath));
         }
         project = projectCache.get(projectPath) ?? null;
       }
@@ -156,13 +158,14 @@ export const sessionsService = {
    * optionally removes the transcript file before deleting the database row.
    */
   async deleteOrArchiveSessionById(
+    userId: number,
     sessionId: string,
     options: {
       force?: boolean;
       deletedFromDisk?: boolean;
     } = {},
   ): Promise<{ sessionId: string; action: 'archived' | 'deleted'; deletedFromDisk: boolean }> {
-    const session = sessionsDb.getSessionById(sessionId);
+    const session = sessionsDb.getSessionById(userId, sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
         code: 'SESSION_NOT_FOUND',
@@ -171,7 +174,7 @@ export const sessionsService = {
     }
 
     if (!options.force) {
-      sessionsDb.updateSessionIsArchived(sessionId, true);
+      sessionsDb.updateSessionIsArchived(userId, sessionId, true);
       return {
         sessionId,
         action: 'archived',
@@ -184,7 +187,7 @@ export const sessionsService = {
       removedFromDisk = await removeFileIfExists(session.jsonl_path);
     }
 
-    const deleted = sessionsDb.deleteSessionById(sessionId);
+    const deleted = sessionsDb.deleteSessionById(userId, sessionId);
     if (!deleted) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
         code: 'SESSION_NOT_FOUND',
@@ -202,8 +205,8 @@ export const sessionsService = {
   /**
    * Restores one archived session back into the active sidebar lists.
    */
-  restoreSessionById(sessionId: string): { sessionId: string; isArchived: false } {
-    const session = sessionsDb.getSessionById(sessionId);
+  restoreSessionById(userId: number, sessionId: string): { sessionId: string; isArchived: false } {
+    const session = sessionsDb.getSessionById(userId, sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
         code: 'SESSION_NOT_FOUND',
@@ -211,15 +214,19 @@ export const sessionsService = {
       });
     }
 
-    sessionsDb.updateSessionIsArchived(sessionId, false);
+    sessionsDb.updateSessionIsArchived(userId, sessionId, false);
     return { sessionId, isArchived: false };
   },
 
   /**
    * Renames one session by id without requiring the caller to pass provider.
    */
-  renameSessionById(sessionId: string, summary: string): { sessionId: string; summary: string } {
-    const session = sessionsDb.getSessionById(sessionId);
+  renameSessionById(
+    userId: number,
+    sessionId: string,
+    summary: string,
+  ): { sessionId: string; summary: string } {
+    const session = sessionsDb.getSessionById(userId, sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {
         code: 'SESSION_NOT_FOUND',
@@ -227,7 +234,7 @@ export const sessionsService = {
       });
     }
 
-    sessionsDb.updateSessionCustomName(sessionId, summary);
+    sessionsDb.updateSessionCustomName(userId, sessionId, summary);
     return { sessionId, summary };
   },
 };

@@ -7,8 +7,11 @@ import test from 'node:test';
 import { closeConnection } from '@/modules/database/connection.js';
 import { initializeDatabase } from '@/modules/database/init-db.js';
 import { sessionsDb } from '@/modules/database/repositories/sessions.db.js';
+import { userDb } from '@/modules/database/repositories/users.js';
 
-async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promise<void> {
+async function withIsolatedDatabase(
+  runTest: (userId: number) => void | Promise<void>,
+): Promise<void> {
   const previousDatabasePath = process.env.DATABASE_PATH;
   const tempDirectory = await mkdtemp(path.join(tmpdir(), 'sessions-db-'));
   const databasePath = path.join(tempDirectory, 'auth.db');
@@ -17,8 +20,11 @@ async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promis
   process.env.DATABASE_PATH = databasePath;
   await initializeDatabase();
 
+  const created = userDb.createUser('test-user', 'hash');
+  const userId = Number(created.id);
+
   try {
-    await runTest();
+    await runTest(userId);
   } finally {
     closeConnection();
     if (previousDatabasePath === undefined) {
@@ -31,15 +37,15 @@ async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promis
 }
 
 test('session archive queries hide archived rows from active project views', async () => {
-  await withIsolatedDatabase(() => {
-    sessionsDb.createSession('session-active', 'claude', '/workspace/demo-project', 'Active Session');
-    sessionsDb.createSession('session-archived', 'claude', '/workspace/demo-project', 'Archived Session');
-    sessionsDb.updateSessionIsArchived('session-archived', true);
+  await withIsolatedDatabase((userId) => {
+    sessionsDb.createSession(userId, 'session-active', 'claude', '/workspace/demo-project', 'Active Session');
+    sessionsDb.createSession(userId, 'session-archived', 'claude', '/workspace/demo-project', 'Archived Session');
+    sessionsDb.updateSessionIsArchived(userId, 'session-archived', true);
 
-    const activeSessions = sessionsDb.getAllSessions();
-    const archivedSessions = sessionsDb.getArchivedSessions();
-    const activeProjectSessions = sessionsDb.getSessionsByProjectPath('/workspace/demo-project');
-    const allProjectSessions = sessionsDb.getSessionsByProjectPathIncludingArchived('/workspace/demo-project');
+    const activeSessions = sessionsDb.getAllSessions(userId);
+    const archivedSessions = sessionsDb.getArchivedSessions(userId);
+    const activeProjectSessions = sessionsDb.getSessionsByProjectPath(userId, '/workspace/demo-project');
+    const allProjectSessions = sessionsDb.getSessionsByProjectPathIncludingArchived(userId, '/workspace/demo-project');
 
     assert.deepEqual(activeSessions.map((session) => session.session_id), ['session-active']);
     assert.deepEqual(archivedSessions.map((session) => session.session_id), ['session-archived']);
@@ -48,20 +54,20 @@ test('session archive queries hide archived rows from active project views', asy
       allProjectSessions.map((session) => session.session_id).sort(),
       ['session-active', 'session-archived'],
     );
-    assert.equal(sessionsDb.countSessionsByProjectPath('/workspace/demo-project'), 1);
+    assert.equal(sessionsDb.countSessionsByProjectPath(userId, '/workspace/demo-project'), 1);
   });
 });
 
 test('createSession reactivates archived rows when the session becomes active again', async () => {
-  await withIsolatedDatabase(() => {
-    sessionsDb.createSession('session-reused', 'claude', '/workspace/demo-project', 'First Name');
-    sessionsDb.updateSessionIsArchived('session-reused', true);
+  await withIsolatedDatabase((userId) => {
+    sessionsDb.createSession(userId, 'session-reused', 'claude', '/workspace/demo-project', 'First Name');
+    sessionsDb.updateSessionIsArchived(userId, 'session-reused', true);
 
-    sessionsDb.createSession('session-reused', 'claude', '/workspace/demo-project', 'Updated Name');
+    sessionsDb.createSession(userId, 'session-reused', 'claude', '/workspace/demo-project', 'Updated Name');
 
-    const activeSessions = sessionsDb.getAllSessions();
-    const archivedSessions = sessionsDb.getArchivedSessions();
-    const restoredSession = sessionsDb.getSessionById('session-reused');
+    const activeSessions = sessionsDb.getAllSessions(userId);
+    const archivedSessions = sessionsDb.getArchivedSessions(userId);
+    const restoredSession = sessionsDb.getSessionById(userId, 'session-reused');
 
     assert.equal(activeSessions.length, 1);
     assert.equal(activeSessions[0]?.session_id, 'session-reused');
