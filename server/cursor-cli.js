@@ -9,7 +9,19 @@ import { createNormalizedMessage } from './shared/utils.js';
 // Use cross-spawn on Windows for better command execution
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
 
-let activeCursorProcesses = new Map(); // Track active processes by session ID
+// Active Cursor sessions keyed by session ID. Each value is
+// `{ process, userId }` so abort/check helpers can refuse to act on a
+// session that does not belong to the calling user — without the userId
+// tag, knowing any session ID was enough to kill another user's run.
+let activeCursorProcesses = new Map();
+
+function ownerMatches(entry, userId) {
+  if (!entry) return false;
+  if (userId === null || userId === undefined) {
+    return entry.userId === null || entry.userId === undefined;
+  }
+  return entry.userId === userId;
+}
 
 const WORKSPACE_TRUST_PATTERNS = [
   /workspace trust required/i,
@@ -132,7 +144,7 @@ async function spawnCursor(command, options = {}, ws) {
         env: { ...process.env } // Inherit all environment variables
       });
 
-      activeCursorProcesses.set(processKey, cursorProcess);
+      activeCursorProcesses.set(processKey, { process: cursorProcess, userId: ws?.userId ?? null });
 
       const shouldSuppressForTrustRetry = (text) => {
         if (hasRetriedWithTrust || args.includes('--trust')) {
@@ -165,7 +177,7 @@ async function spawnCursor(command, options = {}, ws) {
                   // Update process key with captured session ID
                   if (processKey !== capturedSessionId) {
                     activeCursorProcesses.delete(processKey);
-                    activeCursorProcesses.set(capturedSessionId, cursorProcess);
+                    activeCursorProcesses.set(capturedSessionId, { process: cursorProcess, userId: ws?.userId ?? null });
                   }
 
                   // Set session ID on writer (for API endpoint compatibility)
@@ -310,23 +322,29 @@ async function spawnCursor(command, options = {}, ws) {
   });
 }
 
-function abortCursorSession(sessionId) {
-  const process = activeCursorProcesses.get(sessionId);
-  if (process) {
-    console.log(`Aborting Cursor session: ${sessionId}`);
-    process.kill('SIGTERM');
-    activeCursorProcesses.delete(sessionId);
-    return true;
+function abortCursorSession(sessionId, userId) {
+  const entry = activeCursorProcesses.get(sessionId);
+  if (!ownerMatches(entry, userId)) {
+    return false;
   }
-  return false;
+  console.log(`Aborting Cursor session: ${sessionId}`);
+  entry.process.kill('SIGTERM');
+  activeCursorProcesses.delete(sessionId);
+  return true;
 }
 
-function isCursorSessionActive(sessionId) {
-  return activeCursorProcesses.has(sessionId);
+function isCursorSessionActive(sessionId, userId) {
+  return ownerMatches(activeCursorProcesses.get(sessionId), userId);
 }
 
-function getActiveCursorSessions() {
-  return Array.from(activeCursorProcesses.keys());
+function getActiveCursorSessions(userId) {
+  const sessions = [];
+  for (const [sessionId, entry] of activeCursorProcesses.entries()) {
+    if (ownerMatches(entry, userId)) {
+      sessions.push(sessionId);
+    }
+  }
+  return sessions;
 }
 
 export {

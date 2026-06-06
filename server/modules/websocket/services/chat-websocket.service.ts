@@ -31,10 +31,9 @@ type ChatWebSocketDependencies = {
   queryCodex: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   spawnGemini: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   abortClaudeSDKSession: (sessionId: string, userId?: string | number | null) => Promise<boolean>;
-  abortCursorSession: (sessionId: string) => boolean;
+  abortCursorSession: (sessionId: string, userId?: string | number | null) => boolean;
   abortCodexSession: (sessionId: string, userId?: string | number | null) => boolean;
-  abortGeminiSession: (sessionId: string) => boolean;
-  abortOpenCodeSession: (sessionId: string) => boolean;
+  abortGeminiSession: (sessionId: string, userId?: string | number | null) => boolean;
   resolveToolApproval: (
     requestId: string,
     payload: {
@@ -45,16 +44,15 @@ type ChatWebSocketDependencies = {
     }
   ) => void;
   isClaudeSDKSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
-  isCursorSessionActive: (sessionId: string) => boolean;
+  isCursorSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   isCodexSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
-  isGeminiSessionActive: (sessionId: string) => boolean;
+  isGeminiSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   reconnectSessionWriter: (sessionId: string, ws: WebSocket, userId?: string | number | null) => boolean;
   getPendingApprovalsForSession: (sessionId: string, userId?: string | number | null) => unknown[];
   getActiveClaudeSDKSessions: (userId?: string | number | null) => unknown;
-  getActiveCursorSessions: () => unknown;
+  getActiveCursorSessions: (userId?: string | number | null) => unknown;
   getActiveCodexSessions: (userId?: string | number | null) => unknown;
-  getActiveGeminiSessions: () => unknown;
-  getActiveOpenCodeSessions: () => unknown;
+  getActiveGeminiSessions: (userId?: string | number | null) => unknown;
 };
 
 /**
@@ -229,13 +227,11 @@ export function handleChatConnection(
         let success = false;
 
         if (provider === 'cursor') {
-          success = dependencies.abortCursorSession(sessionId);
+          success = dependencies.abortCursorSession(sessionId, userId);
         } else if (provider === 'codex') {
           success = dependencies.abortCodexSession(sessionId, userId);
         } else if (provider === 'gemini') {
-          success = dependencies.abortGeminiSession(sessionId);
-        } else if (provider === 'opencode') {
-          success = dependencies.abortOpenCodeSession(sessionId);
+          success = dependencies.abortGeminiSession(sessionId, userId);
         } else {
           success = await dependencies.abortClaudeSDKSession(sessionId, userId);
         }
@@ -267,7 +263,7 @@ export function handleChatConnection(
 
       if (messageType === 'cursor-abort') {
         const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
-        const success = dependencies.abortCursorSession(sessionId);
+        const success = dependencies.abortCursorSession(sessionId, writer.userId);
         writer.send(
           createNormalizedMessage({
             kind: 'complete',
@@ -288,13 +284,11 @@ export function handleChatConnection(
         let isActive = false;
 
         if (provider === 'cursor') {
-          isActive = dependencies.isCursorSessionActive(sessionId);
+          isActive = dependencies.isCursorSessionActive(sessionId, userId);
         } else if (provider === 'codex') {
           isActive = dependencies.isCodexSessionActive(sessionId, userId);
         } else if (provider === 'gemini') {
-          isActive = dependencies.isGeminiSessionActive(sessionId);
-        } else if (provider === 'opencode') {
-          isActive = dependencies.isOpenCodeSessionActive(sessionId);
+          isActive = dependencies.isGeminiSessionActive(sessionId, userId);
         } else {
           isActive = dependencies.isClaudeSDKSessionActive(sessionId, userId);
           if (isActive) {
@@ -331,10 +325,9 @@ export function handleChatConnection(
           type: 'active-sessions',
           sessions: {
             claude: dependencies.getActiveClaudeSDKSessions(userId),
-            cursor: dependencies.getActiveCursorSessions(),
+            cursor: dependencies.getActiveCursorSessions(userId),
             codex: dependencies.getActiveCodexSessions(userId),
-            gemini: dependencies.getActiveGeminiSessions(),
-            opencode: dependencies.getActiveOpenCodeSessions(),
+            gemini: dependencies.getActiveGeminiSessions(userId),
           },
         });
       }
