@@ -29,10 +29,9 @@ type ChatWebSocketDependencies = {
   spawnCursor: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   queryCodex: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
   spawnGemini: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
-  spawnOpenCode: (command: string, options: unknown, writer: WebSocketWriter) => Promise<unknown>;
-  abortClaudeSDKSession: (sessionId: string) => Promise<boolean>;
+  abortClaudeSDKSession: (sessionId: string, userId?: string | number | null) => Promise<boolean>;
   abortCursorSession: (sessionId: string) => boolean;
-  abortCodexSession: (sessionId: string) => boolean;
+  abortCodexSession: (sessionId: string, userId?: string | number | null) => boolean;
   abortGeminiSession: (sessionId: string) => boolean;
   abortOpenCodeSession: (sessionId: string) => boolean;
   resolveToolApproval: (
@@ -44,16 +43,15 @@ type ChatWebSocketDependencies = {
       rememberEntry?: unknown;
     }
   ) => void;
-  isClaudeSDKSessionActive: (sessionId: string) => boolean;
+  isClaudeSDKSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   isCursorSessionActive: (sessionId: string) => boolean;
-  isCodexSessionActive: (sessionId: string) => boolean;
+  isCodexSessionActive: (sessionId: string, userId?: string | number | null) => boolean;
   isGeminiSessionActive: (sessionId: string) => boolean;
-  isOpenCodeSessionActive: (sessionId: string) => boolean;
-  reconnectSessionWriter: (sessionId: string, ws: WebSocket) => boolean;
-  getPendingApprovalsForSession: (sessionId: string) => unknown[];
-  getActiveClaudeSDKSessions: () => unknown;
+  reconnectSessionWriter: (sessionId: string, ws: WebSocket, userId?: string | number | null) => boolean;
+  getPendingApprovalsForSession: (sessionId: string, userId?: string | number | null) => unknown[];
+  getActiveClaudeSDKSessions: (userId?: string | number | null) => unknown;
   getActiveCursorSessions: () => unknown;
-  getActiveCodexSessions: () => unknown;
+  getActiveCodexSessions: (userId?: string | number | null) => unknown;
   getActiveGeminiSessions: () => unknown;
   getActiveOpenCodeSessions: () => unknown;
 };
@@ -159,18 +157,19 @@ export function handleChatConnection(
       if (messageType === 'abort-session') {
         const provider = readProvider(data.provider);
         const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+        const userId = writer.userId;
         let success = false;
 
         if (provider === 'cursor') {
           success = dependencies.abortCursorSession(sessionId);
         } else if (provider === 'codex') {
-          success = dependencies.abortCodexSession(sessionId);
+          success = dependencies.abortCodexSession(sessionId, userId);
         } else if (provider === 'gemini') {
           success = dependencies.abortGeminiSession(sessionId);
         } else if (provider === 'opencode') {
           success = dependencies.abortOpenCodeSession(sessionId);
         } else {
-          success = await dependencies.abortClaudeSDKSession(sessionId);
+          success = await dependencies.abortClaudeSDKSession(sessionId, userId);
         }
 
         writer.send(
@@ -217,20 +216,21 @@ export function handleChatConnection(
       if (messageType === 'check-session-status') {
         const provider = readProvider(data.provider);
         const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+        const userId = writer.userId;
         let isActive = false;
 
         if (provider === 'cursor') {
           isActive = dependencies.isCursorSessionActive(sessionId);
         } else if (provider === 'codex') {
-          isActive = dependencies.isCodexSessionActive(sessionId);
+          isActive = dependencies.isCodexSessionActive(sessionId, userId);
         } else if (provider === 'gemini') {
           isActive = dependencies.isGeminiSessionActive(sessionId);
         } else if (provider === 'opencode') {
           isActive = dependencies.isOpenCodeSessionActive(sessionId);
         } else {
-          isActive = dependencies.isClaudeSDKSessionActive(sessionId);
+          isActive = dependencies.isClaudeSDKSessionActive(sessionId, userId);
           if (isActive) {
-            dependencies.reconnectSessionWriter(sessionId, ws);
+            dependencies.reconnectSessionWriter(sessionId, ws, userId);
           }
         }
 
@@ -245,8 +245,9 @@ export function handleChatConnection(
 
       if (messageType === 'get-pending-permissions') {
         const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
-        if (sessionId && dependencies.isClaudeSDKSessionActive(sessionId)) {
-          const pending = dependencies.getPendingApprovalsForSession(sessionId);
+        const userId = writer.userId;
+        if (sessionId && dependencies.isClaudeSDKSessionActive(sessionId, userId)) {
+          const pending = dependencies.getPendingApprovalsForSession(sessionId, userId);
           writer.send({
             type: 'pending-permissions-response',
             sessionId,
@@ -257,12 +258,13 @@ export function handleChatConnection(
       }
 
       if (messageType === 'get-active-sessions') {
+        const userId = writer.userId;
         writer.send({
           type: 'active-sessions',
           sessions: {
-            claude: dependencies.getActiveClaudeSDKSessions(),
+            claude: dependencies.getActiveClaudeSDKSessions(userId),
             cursor: dependencies.getActiveCursorSessions(),
-            codex: dependencies.getActiveCodexSessions(),
+            codex: dependencies.getActiveCodexSessions(userId),
             gemini: dependencies.getActiveGeminiSessions(),
             opencode: dependencies.getActiveOpenCodeSessions(),
           },

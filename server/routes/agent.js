@@ -905,6 +905,12 @@ router.post('/', validateExternalApiKey, async (req, res) => {
 
     finalProjectPath = normalizeProjectPath(finalProjectPath);
 
+    // Warn if the same project path is actively used by another user
+    const sharedPathCheck = projectsDb.isProjectPathUsedByOthers(req.user.id, finalProjectPath);
+    if (sharedPathCheck.used) {
+      console.warn(`[WARN] Project path "${finalProjectPath}" is shared with user(s): ${sharedPathCheck.usernames.join(', ')}`);
+    }
+
     // Register project path in DB (or reuse existing active registration)
     const registrationResult = projectsDb.createProjectPath(req.user.id, finalProjectPath, null);
     if (registrationResult.outcome === 'active_conflict') {

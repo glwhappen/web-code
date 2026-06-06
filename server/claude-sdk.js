@@ -30,8 +30,14 @@ import { sessionsService } from './modules/providers/services/sessions.service.j
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
 import { createNormalizedMessage } from './shared/utils.js';
 
+// Keys are namespaced as `${userId}:${sessionId}` to prevent cross-user session access.
 const activeSessions = new Map();
 const pendingToolApprovals = new Map();
+
+function buildSessionKey(userId, sessionId) {
+  const safeUser = userId === null || userId === undefined ? 'unknown' : String(userId);
+  return `${safeUser}:${sessionId}`;
+}
 
 const TOOL_APPROVAL_TIMEOUT_MS = parseInt(process.env.CLAUDE_TOOL_APPROVAL_TIMEOUT_MS, 10) || 55000;
 
@@ -228,13 +234,16 @@ function mapCliOptionsToSDK(options = {}) {
 
 /**
  * Adds a session to the active sessions map
+ * @param {number|string|null} userId - User identifier
  * @param {string} sessionId - Session identifier
  * @param {Object} queryInstance - SDK query instance
  * @param {Array<string>} tempImagePaths - Temp image file paths for cleanup
  * @param {string} tempDir - Temp directory for cleanup
  */
-function addSession(sessionId, queryInstance, tempImagePaths = [], tempDir = null, writer = null) {
-  activeSessions.set(sessionId, {
+function addSession(userId, sessionId, queryInstance, tempImagePaths = [], tempDir = null, writer = null) {
+  const key = buildSessionKey(userId, sessionId);
+  activeSessions.set(key, {
+    userId,
     instance: queryInstance,
     startTime: Date.now(),
     status: 'active',
@@ -246,27 +255,40 @@ function addSession(sessionId, queryInstance, tempImagePaths = [], tempDir = nul
 
 /**
  * Removes a session from the active sessions map
+ * @param {number|string|null} userId - User identifier
  * @param {string} sessionId - Session identifier
  */
-function removeSession(sessionId) {
-  activeSessions.delete(sessionId);
+function removeSession(userId, sessionId) {
+  activeSessions.delete(buildSessionKey(userId, sessionId));
 }
 
 /**
  * Gets a session from the active sessions map
+ * @param {number|string|null} userId - User identifier
  * @param {string} sessionId - Session identifier
  * @returns {Object|undefined} Session data or undefined
  */
-function getSession(sessionId) {
-  return activeSessions.get(sessionId);
+function getSession(userId, sessionId) {
+  return activeSessions.get(buildSessionKey(userId, sessionId));
 }
 
 /**
- * Gets all active session IDs
+ * Gets all active session IDs for a user
+ * @param {number|string|null} userId - User identifier (null for all)
  * @returns {Array<string>} Array of active session IDs
  */
-function getAllSessions() {
-  return Array.from(activeSessions.keys());
+function getAllSessions(userId = null) {
+  if (userId === null) {
+    return Array.from(activeSessions.keys());
+  }
+  const prefix = `${String(userId)}:`;
+  const sessions = [];
+  for (const key of activeSessions.keys()) {
+    if (key.startsWith(prefix)) {
+      sessions.push(key.split(':').slice(1).join(':'));
+    }
+  }
+  return sessions;
 }
 
 /**
@@ -510,6 +532,7 @@ async function loadMcpConfig(cwd) {
  */
 async function queryClaudeSDK(command, options = {}, ws) {
   const { sessionId, sessionSummary } = options;
+  const userId = ws?.userId || null;
   let capturedSessionId = sessionId;
   let sessionCreatedSent = false;
   let tempImagePaths = [];
@@ -676,7 +699,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
 
     // Track the query instance for abort capability
     if (capturedSessionId) {
-      addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir, ws);
+      addSession(userId, capturedSessionId, queryInstance, tempImagePaths, tempDir, ws);
     }
 
     // Process streaming messages
@@ -686,7 +709,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
       if (message.session_id && !capturedSessionId) {
 
         capturedSessionId = message.session_id;
-        addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir, ws);
+        addSession(userId, capturedSessionId, queryInstance, tempImagePaths, tempDir, ws);
 
         // Set session ID on writer
         if (ws.setSessionId && typeof ws.setSessionId === 'function') {
@@ -725,7 +748,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
 
     // Clean up session on completion
     if (capturedSessionId) {
-      removeSession(capturedSessionId);
+      removeSession(userId, capturedSessionId);
     }
 
     // Clean up temporary image files
@@ -747,7 +770,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
 
     // Clean up session on error
     if (capturedSessionId) {
-      removeSession(capturedSessionId);
+      removeSession(userId, capturedSessionId);
     }
 
     // Clean up temporary image files on error
@@ -774,18 +797,19 @@ async function queryClaudeSDK(command, options = {}, ws) {
 /**
  * Aborts an active SDK session
  * @param {string} sessionId - Session identifier
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {boolean} True if session was aborted, false if not found
  */
-async function abortClaudeSDKSession(sessionId) {
-  const session = getSession(sessionId);
+async function abortClaudeSDKSession(sessionId, userId = null) {
+  const session = getSession(userId, sessionId);
 
   if (!session) {
-    console.log(`Session ${sessionId} not found`);
+    console.log(`Session ${sessionId} not found for user ${userId}`);
     return false;
   }
 
   try {
-    console.log(`Aborting SDK session: ${sessionId}`);
+    console.log(`Aborting SDK session: ${sessionId} (user: ${userId})`);
 
     // Call interrupt() on the query instance
     await session.instance.interrupt();
@@ -797,7 +821,7 @@ async function abortClaudeSDKSession(sessionId) {
     await cleanupTempFiles(session.tempImagePaths, session.tempDir);
 
     // Clean up session
-    removeSession(sessionId);
+    removeSession(userId, sessionId);
 
     return true;
   } catch (error) {
@@ -809,27 +833,30 @@ async function abortClaudeSDKSession(sessionId) {
 /**
  * Checks if an SDK session is currently active
  * @param {string} sessionId - Session identifier
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {boolean} True if session is active
  */
-function isClaudeSDKSessionActive(sessionId) {
-  const session = getSession(sessionId);
+function isClaudeSDKSessionActive(sessionId, userId = null) {
+  const session = getSession(userId, sessionId);
   return session && session.status === 'active';
 }
 
 /**
  * Gets all active SDK session IDs
+ * @param {number|string|null} userId - User identifier (null for all)
  * @returns {Array<string>} Array of active session IDs
  */
-function getActiveClaudeSDKSessions() {
-  return getAllSessions();
+function getActiveClaudeSDKSessions(userId = null) {
+  return getAllSessions(userId);
 }
 
 /**
  * Get pending tool approvals for a specific session.
  * @param {string} sessionId - The session ID
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {Array} Array of pending permission request objects
  */
-function getPendingApprovalsForSession(sessionId) {
+function getPendingApprovalsForSession(sessionId, userId = null) {
   const pending = [];
   for (const [requestId, resolver] of pendingToolApprovals.entries()) {
     if (resolver._sessionId === sessionId) {
@@ -848,16 +875,16 @@ function getPendingApprovalsForSession(sessionId) {
 
 /**
  * Reconnect a session's WebSocketWriter to a new raw WebSocket.
- * Called when client reconnects (e.g. page refresh) while SDK is still running.
  * @param {string} sessionId - The session ID
  * @param {Object} newRawWs - The new raw WebSocket connection
+ * @param {number|string|null} userId - User identifier for namespace
  * @returns {boolean} True if writer was successfully reconnected
  */
-function reconnectSessionWriter(sessionId, newRawWs) {
-  const session = getSession(sessionId);
+function reconnectSessionWriter(sessionId, newRawWs, userId = null) {
+  const session = getSession(userId, sessionId);
   if (!session?.writer?.updateWebSocket) return false;
   session.writer.updateWebSocket(newRawWs);
-  console.log(`[RECONNECT] Writer swapped for session ${sessionId}`);
+  console.log(`[RECONNECT] Writer swapped for session ${sessionId} (user: ${userId})`);
   return true;
 }
 

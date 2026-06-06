@@ -177,4 +177,10 @@ export const userDb = {
       .get(userId) as { has_completed_onboarding: number } | undefined;
     return row?.has_completed_onboarding === 1;
   },
+
+  /** Updates the password hash for a given user. */
+  updatePassword(userId: number, passwordHash: string): void {
+    const db = getConnection();
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
+  },
 };

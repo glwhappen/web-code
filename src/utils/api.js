@@ -57,6 +57,10 @@ export const api = {
     deleteUser: (userId) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(String(userId))}`, {
       method: 'DELETE',
     }),
+    resetPassword: (userId, password) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(String(userId))}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ password }),
+    }),
   },
 
   // Protected endpoints
