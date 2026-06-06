@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { Check, Edit2, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
+import { Check, Edit2, MoreHorizontal, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { Badge, Button, Tooltip } from '../../../../shared/view/ui';
@@ -59,6 +60,13 @@ const formatCompactSessionAge = (dateString: string, currentTime: Date): string 
   return `${diffInDays}d`;
 };
 
+type MenuPosition = {
+  top: number;
+  left: number;
+};
+
+const SESSION_ACTIONS_MENU_WIDTH = 168;
+
 export default function SidebarSessionItem({
   project,
   session,
@@ -79,26 +87,12 @@ export default function SidebarSessionItem({
   const isSelected = selectedSession?.id === session.id;
   const isEditing = editingSession === session.id;
   const compactSessionAge = formatCompactSessionAge(sessionView.sessionTime, currentTime);
-  const editingContainerRef = useRef<HTMLDivElement>(null);
-
-  // The rename panel sits inside a group-hover opacity wrapper, so leaving the row
-  // would visually hide it. While editing, dismiss only when the user clicks outside
-  // the panel (matches Escape / cancel-button behaviour).
-  useEffect(() => {
-    if (!isEditing) {
-      return;
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      const container = editingContainerRef.current;
-      if (container && !container.contains(event.target as Node)) {
-        onCancelEditingSession();
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, [isEditing, onCancelEditingSession]);
+  const isSessionBeingEdited = editingSession === session.id;
+  const [isSessionMenuOpen, setIsSessionMenuOpen] = useState(false);
+  const [sessionMenuPosition, setSessionMenuPosition] = useState<MenuPosition>({ top: 0, left: 0 });
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNextTapRef = useRef(false);
+  const showDesktopSessionActions = isSelected || isSessionBeingEdited || isSessionMenuOpen;
 
   // Sessions are owned by a project identified by `projectId` (DB primary key)
   // after the projectName → projectId migration.
@@ -114,6 +108,85 @@ export default function SidebarSessionItem({
   const requestDeleteSession = () => {
     onDeleteSession(project.projectId, session.id, sessionView.sessionName, session.__provider);
   };
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const openSessionActionsMenu = (clientX: number, clientY: number) => {
+    const left = Math.max(8, Math.min(clientX, window.innerWidth - SESSION_ACTIONS_MENU_WIDTH - 8));
+    const top = Math.max(8, Math.min(clientY, window.innerHeight - 120));
+    setSessionMenuPosition({ top, left });
+    setIsSessionMenuOpen(true);
+  };
+
+  const closeSessionActionsMenu = () => {
+    setIsSessionMenuOpen(false);
+  };
+
+  const handleSessionContextMenu = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onProjectSelect(project);
+    onSessionSelect(session, project.projectId);
+    openSessionActionsMenu(event.clientX, event.clientY);
+  };
+
+  const handleSessionTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    clearLongPressTimer();
+    if (event.touches.length !== 1) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    longPressTimerRef.current = setTimeout(() => {
+      suppressNextTapRef.current = true;
+      onProjectSelect(project);
+      onSessionSelect(session, project.projectId);
+      openSessionActionsMenu(touch.clientX, touch.clientY);
+    }, 450);
+  };
+
+  const handleSessionTouchEnd = () => {
+    clearLongPressTimer();
+  };
+
+  useEffect(() => {
+    if (!isSessionMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(`[data-session-actions-menu="${session.id}"]`)) {
+        return;
+      }
+      closeSessionActionsMenu();
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeSessionActionsMenu();
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('resize', closeSessionActionsMenu);
+    window.addEventListener('scroll', closeSessionActionsMenu, true);
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('resize', closeSessionActionsMenu);
+      window.removeEventListener('scroll', closeSessionActionsMenu, true);
+    };
+  }, [isSessionMenuOpen, session.id]);
+
+  useEffect(() => () => clearLongPressTimer(), []);
 
   return (
     <div className="group relative">
@@ -138,7 +211,18 @@ export default function SidebarSessionItem({
               ? 'border-green-500/30 bg-green-50/5 dark:bg-green-900/5'
               : 'border-border/30',
           )}
-          onClick={selectMobileSession}
+          onClick={() => {
+            if (suppressNextTapRef.current) {
+              suppressNextTapRef.current = false;
+              return;
+            }
+            selectMobileSession();
+          }}
+          onTouchStart={handleSessionTouchStart}
+          onTouchEnd={handleSessionTouchEnd}
+          onTouchCancel={handleSessionTouchEnd}
+          onTouchMove={handleSessionTouchEnd}
+          onContextMenu={handleSessionContextMenu}
         >
           <div className="flex items-center gap-2">
             <div
@@ -166,17 +250,19 @@ export default function SidebarSessionItem({
               </div>
             </div>
 
-            {!sessionView.isCursorSession && (
-              <button
-                className="ml-1 flex h-5 w-5 items-center justify-center rounded-md bg-red-50 opacity-70 transition-transform active:scale-95 dark:bg-red-900/20"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  requestDeleteSession();
-                }}
-              >
-                <Trash2 className="h-2.5 w-2.5 text-red-600 dark:text-red-400" />
-              </button>
-            )}
+            <button
+              className="ml-1 flex h-5 w-5 items-center justify-center rounded-md bg-muted/50 text-muted-foreground transition-transform active:scale-95"
+              onClick={(event) => {
+                event.stopPropagation();
+                onProjectSelect(project);
+                onSessionSelect(session, project.projectId);
+                const target = event.currentTarget.getBoundingClientRect();
+                openSessionActionsMenu(target.right - 8, target.bottom + 4);
+              }}
+              title={t('actions.more', 'More actions')}
+            >
+              <MoreHorizontal className="h-3 w-3" />
+            </button>
           </div>
         </div>
       </div>
@@ -185,10 +271,11 @@ export default function SidebarSessionItem({
         <Button
           variant="ghost"
           className={cn(
-            'w-full justify-start p-2 h-auto font-normal text-left hover:bg-accent/50 transition-colors duration-200',
+            'w-full justify-start p-2 pr-10 h-auto font-normal text-left hover:bg-accent/50 transition-colors duration-200',
             isSelected && 'bg-accent text-accent-foreground',
           )}
           onClick={() => onSessionSelect(session, project.projectId)}
+          onContextMenu={handleSessionContextMenu}
         >
           <div className="flex w-full min-w-0 items-start gap-2">
             <SessionProviderLogo provider={session.__provider} className="mt-0.5 h-3 w-3 flex-shrink-0" />
@@ -199,7 +286,7 @@ export default function SidebarSessionItem({
                   <span
                     className={cn(
                       'ml-auto flex-shrink-0 text-[11px] text-muted-foreground transition-opacity duration-200',
-                      isEditing ? 'opacity-0' : 'group-hover:opacity-0',
+                      showDesktopSessionActions ? 'opacity-0' : 'opacity-100',
                     )}
                   >
                     {compactSessionAge}
@@ -214,13 +301,12 @@ export default function SidebarSessionItem({
         </Button>
 
         <div
-          ref={editingContainerRef}
           className={cn(
             'absolute right-2 top-1/2 flex -translate-y-1/2 transform items-center gap-1 transition-all duration-200',
-            isEditing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+            showDesktopSessionActions ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
           )}
         >
-            {isEditing ? (
+            {isSessionBeingEdited ? (
               <>
                 <input
                   type="text"
@@ -265,27 +351,48 @@ export default function SidebarSessionItem({
                   className="flex h-6 w-6 items-center justify-center rounded bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/20 dark:hover:bg-gray-900/40"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onStartEditingSession(session.id, sessionView.sessionName);
+                    const target = event.currentTarget.getBoundingClientRect();
+                    openSessionActionsMenu(target.right - 8, target.bottom + 4);
                   }}
-                  title={t('tooltips.editSessionName')}
+                  title={t('actions.more', 'More actions')}
                 >
-                  <Edit2 className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                  <MoreHorizontal className="h-3 w-3 text-gray-600 dark:text-gray-400" />
                 </button>
-                {!sessionView.isCursorSession && (
-                  <button
-                    className="flex h-6 w-6 items-center justify-center rounded bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      requestDeleteSession();
-                    }}
-                    title={t('tooltips.deleteSessionOptions', 'Archive or permanently delete this session')}
-                  >
-                    <Trash2 className="h-3 w-3 text-red-600 dark:text-red-400" />
-                  </button>
-                )}
               </>
             )}
           </div>
+        {isSessionMenuOpen && !isSessionBeingEdited && (
+          <div
+            data-session-actions-menu={session.id}
+            className="fixed z-50 w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+            style={{ top: `${sessionMenuPosition.top}px`, left: `${sessionMenuPosition.left}px` }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+              onClick={() => {
+                closeSessionActionsMenu();
+                onStartEditingSession(session.id, sessionView.sessionName);
+              }}
+            >
+              <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+              {t('sessions.renameSession')}
+            </button>
+            {!sessionView.isCursorSession && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                onClick={() => {
+                  closeSessionActionsMenu();
+                  requestDeleteSession();
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('sessions.deleteSession')}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

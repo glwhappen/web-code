@@ -1,4 +1,6 @@
-import { Check, ChevronDown, ChevronRight, Edit3, Star, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from 'react';
+import { Check, ChevronDown, ChevronRight, Edit3, Folder, FolderOpen, MoreHorizontal, Star, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { Button } from '../../../../shared/view/ui';
@@ -56,6 +58,13 @@ const getSessionCountDisplay = (project: Project, sessions: SessionWithProvider[
   return String(total);
 };
 
+type MenuPosition = {
+  top: number;
+  left: number;
+};
+
+const PROJECT_ACTIONS_MENU_WIDTH = 176;
+
 export default function SidebarProjectItem({
   project,
   selectedProject,
@@ -95,6 +104,11 @@ export default function SidebarProjectItem({
   // after the projectName → projectId migration.
   const isSelected = selectedProject?.projectId === project.projectId;
   const isEditing = editingProject === project.projectId;
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [projectMenuPosition, setProjectMenuPosition] = useState<MenuPosition>({ top: 0, left: 0 });
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNextTapRef = useRef(false);
+  const showDesktopProjectActions = isSelected || isProjectMenuOpen;
   const totalSessionCount = Number(project.sessionMeta?.total ?? sessions.length);
   const sessionCountDisplay = getSessionCountDisplay(project, sessions);
   const sessionCountLabel = `${sessionCountDisplay} session${totalSessionCount === 1 ? '' : 's'}`;
@@ -107,6 +121,24 @@ export default function SidebarProjectItem({
     onSaveProjectName(project.projectId);
   };
 
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const openProjectActionsMenu = (clientX: number, clientY: number) => {
+    const left = Math.max(8, Math.min(clientX, window.innerWidth - PROJECT_ACTIONS_MENU_WIDTH - 8));
+    const top = Math.max(8, Math.min(clientY, window.innerHeight - 140));
+    setProjectMenuPosition({ top, left });
+    setIsProjectMenuOpen(true);
+  };
+
+  const closeProjectActionsMenu = () => {
+    setIsProjectMenuOpen(false);
+  };
+
   const selectAndToggleProject = () => {
     if (selectedProject?.projectId !== project.projectId) {
       onProjectSelect(project);
@@ -114,6 +146,65 @@ export default function SidebarProjectItem({
 
     toggleProject();
   };
+
+  const handleProjectContextMenu = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onProjectSelect(project);
+    openProjectActionsMenu(event.clientX, event.clientY);
+  };
+
+  const handleProjectTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    clearLongPressTimer();
+    if (event.touches.length !== 1) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    longPressTimerRef.current = setTimeout(() => {
+      suppressNextTapRef.current = true;
+      onProjectSelect(project);
+      openProjectActionsMenu(touch.clientX, touch.clientY);
+    }, 450);
+  };
+
+  const handleProjectTouchEnd = () => {
+    clearLongPressTimer();
+  };
+
+  useEffect(() => {
+    if (!isProjectMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(`[data-project-actions-menu="${project.projectId}"]`)) {
+        return;
+      }
+      closeProjectActionsMenu();
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeProjectActionsMenu();
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('resize', closeProjectActionsMenu);
+    window.addEventListener('scroll', closeProjectActionsMenu, true);
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleEscape);
+      window.removeEventListener('resize', closeProjectActionsMenu);
+      window.removeEventListener('scroll', closeProjectActionsMenu, true);
+    };
+  }, [isProjectMenuOpen, project.projectId]);
+
+  useEffect(() => () => clearLongPressTimer(), []);
 
   return (
     <div className={cn('md:space-y-1', isDeleting && 'opacity-50 pointer-events-none')}>
@@ -127,7 +218,18 @@ export default function SidebarProjectItem({
                 !isSelected &&
                 'bg-yellow-50/50 dark:bg-yellow-900/5 border-yellow-200/30 dark:border-yellow-800/30',
             )}
-            onClick={toggleProject}
+            onClick={() => {
+              if (suppressNextTapRef.current) {
+                suppressNextTapRef.current = false;
+                return;
+              }
+              toggleProject();
+            }}
+            onTouchStart={handleProjectTouchStart}
+            onTouchEnd={handleProjectTouchEnd}
+            onTouchCancel={handleProjectTouchEnd}
+            onTouchMove={handleProjectTouchEnd}
+            onContextMenu={handleProjectContextMenu}
           >
             <div className="flex items-center justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -222,24 +324,23 @@ export default function SidebarProjectItem({
                   </>
                 ) : (
                   <>
-                    <button
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-500/10 active:scale-90 dark:border-red-800 dark:bg-red-900/30"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDeleteProject(project);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    </button>
+                    {isStarred && (
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400">
+                        <Star className="h-3 w-3 fill-current" />
+                      </div>
+                    )}
 
                     <button
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 active:scale-90 dark:border-primary/30 dark:bg-primary/20"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/40 bg-muted/50 active:scale-90"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onStartEditingProject(project);
+                        onProjectSelect(project);
+                        const target = event.currentTarget.getBoundingClientRect();
+                        openProjectActionsMenu(target.right - 8, target.bottom + 4);
                       }}
+                      title={t('actions.more', 'More actions')}
                     >
-                      <Edit3 className="h-4 w-4 text-primary" />
+                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                     </button>
 
                     <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted/30">
@@ -266,6 +367,7 @@ export default function SidebarProjectItem({
               'bg-yellow-50/50 dark:bg-yellow-900/10 hover:bg-yellow-100/50 dark:hover:bg-yellow-900/20',
           )}
           onClick={selectAndToggleProject}
+          onContextMenu={handleProjectContextMenu}
         >
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div
@@ -356,26 +458,23 @@ export default function SidebarProjectItem({
               </>
             ) : (
               <>
-                <div
-                  className="touch:opacity-100 flex h-6 w-6 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-200 hover:bg-accent group-hover:opacity-100"
+                <button
+                  type="button"
+                  className={cn(
+                    'touch:opacity-100 flex h-6 w-6 items-center justify-center rounded transition-all duration-200 hover:bg-accent',
+                    showDesktopProjectActions
+                      ? 'opacity-100 pointer-events-auto'
+                      : 'opacity-0 pointer-events-none',
+                  )}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onStartEditingProject(project);
+                    const target = event.currentTarget.getBoundingClientRect();
+                    openProjectActionsMenu(target.right - 8, target.bottom + 4);
                   }}
-                  title={t('tooltips.renameProject')}
+                  title={t('actions.more', 'More actions')}
                 >
-                  <Edit3 className="h-3 w-3" />
-                </div>
-                <div
-                  className="touch:opacity-100 flex h-6 w-6 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-200 hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-900/20"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDeleteProject(project);
-                  }}
-                  title={t('tooltips.deleteProject')}
-                >
-                  <Trash2 className="h-3 w-3 text-red-600 dark:text-red-400" />
-                </div>
+                  <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
+                </button>
                 {isExpanded ? (
                   <ChevronDown className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
                 ) : (
@@ -386,6 +485,48 @@ export default function SidebarProjectItem({
           </div>
         </Button>
       </div>
+
+      {isProjectMenuOpen && !isEditing && (
+        <div
+          data-project-actions-menu={project.projectId}
+          className="fixed z-50 w-44 rounded-md border border-border bg-popover p-1 shadow-lg"
+          style={{ top: `${projectMenuPosition.top}px`, left: `${projectMenuPosition.left}px` }}
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+            onClick={() => {
+              closeProjectActionsMenu();
+              toggleStarProject();
+            }}
+          >
+            <Star className={cn('h-3.5 w-3.5', isStarred ? 'fill-current text-yellow-500' : 'text-muted-foreground')} />
+            {isStarred ? t('tooltips.removeFromFavorites') : t('tooltips.addToFavorites')}
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-popover-foreground hover:bg-accent"
+            onClick={() => {
+              closeProjectActionsMenu();
+              onStartEditingProject(project);
+            }}
+          >
+            <Edit3 className="h-3.5 w-3.5 text-muted-foreground" />
+            {t('projects.renameProject')}
+          </button>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+            onClick={() => {
+              closeProjectActionsMenu();
+              onDeleteProject(project);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t('projects.deleteProject')}
+          </button>
+        </div>
+      )}
 
       <SidebarProjectSessions
         project={project}
