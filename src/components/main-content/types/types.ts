@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import type { AppTab, Project, ProjectSession } from '../../../types/app';
 import type { SessionNavigationOptions } from '../../chat/types/types';
+import type { WebSocketMessageEvent } from '../../../contexts/WebSocketContext';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
 
@@ -42,6 +43,7 @@ export type MainContentProps = {
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
   latestMessage: unknown;
+  messageEvents: WebSocketMessageEvent[];
   isMobile: boolean;
   onMenuClick: () => void;
   isLoading: boolean;

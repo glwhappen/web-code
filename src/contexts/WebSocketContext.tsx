@@ -6,7 +6,13 @@ type WebSocketContextType = {
   ws: WebSocket | null;
   sendMessage: (message: any) => void;
   latestMessage: any | null;
+  messageEvents: WebSocketMessageEvent[];
   isConnected: boolean;
+};
+
+export type WebSocketMessageEvent = {
+  id: number;
+  data: any;
 };
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
@@ -30,28 +36,24 @@ const useWebSocketProviderState = (): WebSocketContextType => {
   const wsRef = useRef<WebSocket | null>(null);
   const unmountedRef = useRef(false); // Track if component is unmounted
   const hasConnectedRef = useRef(false); // Track if we've ever connected (to detect reconnects)
+  const messageEventIdRef = useRef(0);
   const [latestMessage, setLatestMessage] = useState<any>(null);
+  const [messageEvents, setMessageEvents] = useState<WebSocketMessageEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { token } = useAuth();
 
-  useEffect(() => {
-    // The cleanup below sets unmountedRef = true. Without this reset, every
-    // re-run of the effect (e.g. on token refresh) would short-circuit connect()
-    // at its unmounted guard and leave the socket permanently disconnected.
-    unmountedRef.current = false;
-    connect();
-
-    return () => {
-      unmountedRef.current = true;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [token]); // everytime token changes, we reconnect
+  const publishMessage = useCallback((data: any) => {
+    setLatestMessage(data);
+    setMessageEvents((previousEvents) => {
+      const nextEvent = {
+        id: ++messageEventIdRef.current,
+        data,
+      };
+      const nextEvents = [...previousEvents, nextEvent];
+      return nextEvents.length > 500 ? nextEvents.slice(-500) : nextEvents;
+    });
+  }, []);
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return; // Prevent connection if unmounted
@@ -68,7 +70,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
         wsRef.current = websocket;
         if (hasConnectedRef.current) {
           // This is a reconnect — signal so components can catch up on missed messages
-          setLatestMessage({ type: 'websocket-reconnected', timestamp: Date.now() });
+          publishMessage({ type: 'websocket-reconnected', timestamp: Date.now() });
         }
         hasConnectedRef.current = true;
       };
@@ -76,7 +78,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
       websocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          setLatestMessage(data);
+          publishMessage(data);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
         }
@@ -100,7 +102,23 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
     }
-  }, [token]); // everytime token changes, we reconnect
+  }, [publishMessage, token]); // everytime token changes, we reconnect
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    connect();
+    
+    return () => {
+      unmountedRef.current = true;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+    };
+  }, [connect]);
 
   const sendMessage = useCallback((message: any) => {
     const socket = wsRef.current;
@@ -116,8 +134,9 @@ const useWebSocketProviderState = (): WebSocketContextType => {
     ws: wsRef.current,
     sendMessage,
     latestMessage,
+    messageEvents,
     isConnected
-  }), [sendMessage, latestMessage, isConnected]);
+  }), [sendMessage, latestMessage, messageEvents, isConnected]);
 
   return value;
 };

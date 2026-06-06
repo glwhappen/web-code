@@ -27,6 +27,7 @@ function ChatInterface({
   ws,
   sendMessage,
   latestMessage,
+  messageEvents,
   onFileOpen,
   onInputFocusChange,
   onSessionActive,
@@ -228,6 +229,7 @@ function ChatInterface({
 
   useChatRealtimeHandlers({
     latestMessage,
+    messageEvents,
     provider,
     selectedSession,
     currentSessionId,

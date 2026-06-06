@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { usePaletteOps } from '../../../contexts/PaletteOpsContext';
 import type { PendingPermissionRequest, SessionNavigationOptions } from '../types/types';
 import type { ProjectSession, LLMProvider } from '../../../types/app';
 import type { SessionStore, NormalizedMessage } from '../../../stores/useSessionStore';
+import type { WebSocketMessageEvent } from '../../../contexts/WebSocketContext';
 
 type PendingViewSession = {
   startedAt: number;
@@ -49,6 +50,7 @@ type LatestChatMessage = {
 
 interface UseChatRealtimeHandlersArgs {
   latestMessage: LatestChatMessage | null;
+  messageEvents: WebSocketMessageEvent[];
   provider: LLMProvider;
   selectedSession: ProjectSession | null;
   currentSessionId: string | null;
@@ -76,6 +78,7 @@ interface UseChatRealtimeHandlersArgs {
 
 export function useChatRealtimeHandlers({
   latestMessage,
+  messageEvents,
   provider,
   selectedSession,
   currentSessionId,
@@ -98,11 +101,19 @@ export function useChatRealtimeHandlers({
 }: UseChatRealtimeHandlersArgs) {
   const paletteOps = usePaletteOps();
   const lastProcessedMessageRef = useRef<LatestChatMessage | null>(null);
+  const [processedEventId, setProcessedEventId] = useState(0);
 
   useEffect(() => {
-    if (!latestMessage) return;
-    if (lastProcessedMessageRef.current === latestMessage) return;
-    lastProcessedMessageRef.current = latestMessage;
+    const nextEvent = messageEvents.find((event) => event.id > processedEventId);
+    const messageToProcess = (nextEvent?.data ?? latestMessage) as LatestChatMessage | null;
+
+    if (!messageToProcess) return;
+    if (nextEvent) {
+      setProcessedEventId(nextEvent.id);
+    } else {
+      if (lastProcessedMessageRef.current === messageToProcess) return;
+      lastProcessedMessageRef.current = messageToProcess;
+    }
 
     const activeViewSessionId =
       selectedSession?.id || currentSessionId || null;
@@ -111,7 +122,7 @@ export function useChatRealtimeHandlers({
     /*  Legacy messages (no `kind` field) — handle and return           */
     /* ---------------------------------------------------------------- */
 
-    const msg = latestMessage as any;
+    const msg = messageToProcess as any;
 
     if (!msg.kind) {
       const messageType = String(msg.type || '');
@@ -370,6 +381,8 @@ export function useChatRealtimeHandlers({
     }
   }, [
     latestMessage,
+    messageEvents,
+    processedEventId,
     provider,
     selectedSession,
     currentSessionId,
