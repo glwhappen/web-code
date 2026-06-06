@@ -12,7 +12,6 @@ import type {
 import { useDropzone } from 'react-dropzone';
 
 import { api, authenticatedFetch } from '../../../utils/api';
-import { thinkingModes } from '../constants/thinkingModes';
 import { grantClaudeToolPermission } from '../utils/chatPermissions';
 import { safeLocalStorage } from '../utils/chatStorage';
 import type {
@@ -282,7 +281,6 @@ export function useChatComposerState({
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
-  const [thinkingMode, setThinkingMode] = useState('none');
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const [isLoadingQueuedMessages, setIsLoadingQueuedMessages] = useState(false);
   const [commandModalPayload, setCommandModalPayload] = useState<CommandModalPayload | null>(null);
@@ -403,7 +401,7 @@ export function useChatComposerState({
   }, [addMessage]);
 
   const executeCommand = useCallback(
-    async (command: SlashCommand, rawInput?: string) => {
+    async (command: SlashCommand, rawInput?: string, options?: { preserveInput?: boolean }) => {
       if (!command || !selectedProject) {
         return;
       }
@@ -460,8 +458,10 @@ export function useChatComposerState({
         const result = (await response.json()) as CommandExecutionResult;
         if (result.type === 'builtin') {
           handleBuiltInCommand(result);
-          setInput('');
-          inputValueRef.current = '';
+          if (!options?.preserveInput) {
+            setInput('');
+            inputValueRef.current = '';
+          }
         } else if (result.type === 'custom') {
           await handleCustomCommand(result);
         }
@@ -491,6 +491,19 @@ export function useChatComposerState({
       tokenBudget,
     ],
   );
+
+  const showCostModal = useCallback(() => {
+    executeCommand(
+      {
+        name: '/cost',
+        description: 'Display token usage information',
+        namespace: 'builtin',
+        metadata: { type: 'builtin' },
+      } as SlashCommand,
+      '/cost',
+      { preserveInput: true },
+    );
+  }, [executeCommand]);
 
   const {
     slashCommands,
@@ -832,11 +845,7 @@ export function useChatComposerState({
         return false;
       }
 
-      let messageContent = currentInput;
-      const selectedThinkingMode = thinkingModes.find((mode: { id: string; prefix?: string }) => mode.id === thinkingMode);
-      if (selectedThinkingMode && selectedThinkingMode.prefix) {
-        messageContent = `${selectedThinkingMode.prefix}: ${currentInput}`;
-      }
+      const messageContent = currentInput;
 
       const effectiveSessionId =
         currentSessionId || selectedSession?.id || sessionStorage.getItem('cursorSessionId');
@@ -982,7 +991,6 @@ export function useChatComposerState({
 
       if (shouldClearComposer) {
         resetComposerAfterHandledInput();
-        setThinkingMode('none');
         // Let the input clear paint before the heavier chat-list updates kick in.
         await waitForNextPaint();
         scheduleOptimisticSendUi({
@@ -1022,7 +1030,6 @@ export function useChatComposerState({
       setClaudeStatus,
       setIsLoading,
       setIsUserScrolledUp,
-      thinkingMode,
       uploadImages,
     ],
   );
@@ -1446,8 +1453,6 @@ export function useChatComposerState({
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded,
-    thinkingMode,
-    setThinkingMode,
     slashCommandsCount,
     filteredCommands,
     frequentCommands,
@@ -1490,5 +1495,6 @@ export function useChatComposerState({
     deleteQueuedMessage,
     commandModalPayload,
     closeCommandModal,
+    showCostModal,
   };
 }
