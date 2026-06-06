@@ -46,7 +46,26 @@ interface UseChatProviderStateArgs {
   selectedProject: Project | null;
 }
 
-export function useChatProviderState({ selectedSession }: UseChatProviderStateArgs) {
+type ProviderModelsApiResponse = {
+  success?: boolean;
+  data?: {
+    models?: ProviderModelsDefinition;
+    cache?: ProviderModelsCacheInfo;
+  };
+};
+
+type ChangeActiveModelApiResponse = {
+  success?: boolean;
+  data?: {
+    provider?: LLMProvider;
+    sessionId?: string;
+    supported?: boolean;
+    changed?: boolean;
+    model?: string | null;
+  };
+};
+
+export function useChatProviderState({ selectedSession, selectedProject }: UseChatProviderStateArgs) {
   const [provider, setProvider] = useState<LLMProvider>(() => {
     return (localStorage.getItem('selected-provider') as LLMProvider) || 'claude';
   });

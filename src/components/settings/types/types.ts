@@ -13,8 +13,8 @@ export type GeminiPermissionMode = 'default' | 'auto_edit' | 'yolo';
 
 export type SettingsProject = {
   name: string;
-  displayName?: string;
-  fullPath?: string;
+  displayName: string;
+  fullPath: string;
   path?: string;
   projectHostAlias?: string | null;
   previewProdPort?: number | null;

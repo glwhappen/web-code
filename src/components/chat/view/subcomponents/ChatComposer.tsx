@@ -15,7 +15,6 @@ import {
   type TouchEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-
 import {
   PromptInput,
   PromptInputHeader,
@@ -28,13 +27,6 @@ import {
 } from '../../../../shared/view/ui';
 import type { QueuedChatMessage } from '../../hooks/useChatComposerState';
 import type { PendingPermissionRequest, PermissionMode, Provider } from '../../types/types';
-
-import CommandMenu from './CommandMenu';
-import ClaudeStatus from './ClaudeStatus';
-import ImageAttachment from './ImageAttachment';
-import PermissionRequestsBanner from './PermissionRequestsBanner';
-import ThinkingModeSelector from './ThinkingModeSelector';
-import TokenUsagePie from './TokenUsagePie';
 
 import CommandMenu from './CommandMenu';
 import ClaudeStatus from './ClaudeStatus';

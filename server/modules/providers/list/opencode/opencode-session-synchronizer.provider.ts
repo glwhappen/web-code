@@ -36,24 +36,24 @@ export class OpenCodeSessionSynchronizer implements IProviderSessionSynchronizer
   /**
    * Scans OpenCode's shared opencode.db and upserts active sessions into DB.
    */
-  async synchronize(since?: Date): Promise<number> {
-    const result = this.synchronizeRows(since);
+  async synchronize(since: Date | undefined, ownerUserId: number): Promise<number> {
+    const result = this.synchronizeRows(ownerUserId, since);
     return result.processed;
   }
 
   /**
    * Handles watcher changes for opencode.db.
    */
-  async synchronizeFile(filePath: string): Promise<string | null> {
+  async synchronizeFile(filePath: string, ownerUserId: number): Promise<string | null> {
     if (path.basename(filePath) !== 'opencode.db') {
       return null;
     }
 
-    const result = this.synchronizeRows(undefined, 1);
+    const result = this.synchronizeRows(ownerUserId, undefined, 1);
     return result.firstSessionId;
   }
 
-  private synchronizeRows(since?: Date, limit?: number): SynchronizeRowsResult {
+  private synchronizeRows(ownerUserId: number, since?: Date, limit?: number): SynchronizeRowsResult {
     const dbPath = getOpenCodeDatabasePath();
     if (!fsSync.existsSync(dbPath)) {
       return { processed: 0, firstSessionId: null };
@@ -83,7 +83,7 @@ export class OpenCodeSessionSynchronizer implements IProviderSessionSynchronizer
       let processed = 0;
       let firstSessionId: string | null = null;
       for (const row of rows) {
-        const indexedSessionId = this.upsertSession(db, row);
+        const indexedSessionId = this.upsertSession(ownerUserId, db, row);
         if (!indexedSessionId) {
           continue;
         }
@@ -104,7 +104,7 @@ export class OpenCodeSessionSynchronizer implements IProviderSessionSynchronizer
     }
   }
 
-  private upsertSession(db: Database.Database, row: OpenCodeSessionRow): string | null {
+  private upsertSession(ownerUserId: number, db: Database.Database, row: OpenCodeSessionRow): string | null {
     const sessionId = readOptionalString(row.id);
     const projectPath = readOptionalString(row.directory) ?? readOptionalString(row.worktree);
     if (!sessionId || !projectPath) {
@@ -112,7 +112,7 @@ export class OpenCodeSessionSynchronizer implements IProviderSessionSynchronizer
     }
 
     const fallbackTitle = 'Untitled OpenCode Session';
-    const existingSession = sessionsDb.getSessionById(sessionId);
+    const existingSession = sessionsDb.getSessionById(ownerUserId, sessionId);
     const existingName = existingSession?.custom_name;
     const nextName = existingName && existingName !== fallbackTitle
       ? existingName
@@ -121,6 +121,7 @@ export class OpenCodeSessionSynchronizer implements IProviderSessionSynchronizer
     // OpenCode stores every session in one shared sqlite database, so jsonl_path
     // must stay null to avoid deleting opencode.db when one app session is removed.
     sessionsDb.createSession(
+      ownerUserId,
       sessionId,
       this.provider,
       projectPath,

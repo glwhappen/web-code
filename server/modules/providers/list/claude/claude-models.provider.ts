@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { sessionsDb } from '@/modules/database/index.js';
+import { getDefaultOwnerUserId } from '@/shared/default-user.js';
 import type { IProviderModels } from '@/shared/interfaces.js';
 import type {
   ProviderChangeActiveModelInput,
@@ -174,7 +175,8 @@ export class ClaudeProviderModels implements IProviderModels {
     }
 
     try {
-      const jsonlPath = sessionsDb.getSessionById(sessionId)?.jsonl_path;
+      const ownerUserId = getDefaultOwnerUserId();
+      const jsonlPath = sessionsDb.getSessionById(ownerUserId, sessionId)?.jsonl_path;
       const activeModel = jsonlPath
         ? await readClaudeSessionModelFromJsonl(sessionId, jsonlPath)
         : null;

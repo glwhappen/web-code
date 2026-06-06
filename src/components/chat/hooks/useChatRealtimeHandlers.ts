@@ -9,6 +9,7 @@ import type { SessionStore, NormalizedMessage } from '../../../stores/useSession
 import type { WebSocketMessageEvent } from '../../../contexts/WebSocketContext';
 
 type PendingViewSession = {
+  sessionId?: string | null;
   startedAt: number;
 };
 
@@ -294,6 +295,7 @@ export function useChatRealtimeHandlers({
         setPendingPermissionRequests([]);
         onSessionInactive?.(lifecycleSessionId);
         onSessionNotProcessing?.(lifecycleSessionId);
+        pendingViewSessionRef.current = null;
 
         // Handle aborted case
         if (msg.aborted) {
@@ -307,6 +309,8 @@ export function useChatRealtimeHandlers({
           typeof msg.actualSessionId === 'string' && msg.actualSessionId.trim().length > 0
             ? msg.actualSessionId
             : null;
+        const pendingSessionId = sessionStorage.getItem('pendingSessionId');
+        const completedSuccessfully = msg.exitCode === undefined || msg.exitCode === 0;
         const isVisibleSession =
           Boolean(
             sid
@@ -355,6 +359,7 @@ export function useChatRealtimeHandlers({
         setClaudeStatus(null);
         onSessionInactive?.(lifecycleSessionId);
         onSessionNotProcessing?.(lifecycleSessionId);
+        pendingViewSessionRef.current = null;
         break;
       }
 

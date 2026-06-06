@@ -12,7 +12,6 @@ import type {
 import { useDropzone } from 'react-dropzone';
 
 import { api, authenticatedFetch } from '../../../utils/api';
-import { thinkingModes } from '../constants/thinkingModes';
 import { grantClaudeToolPermission } from '../utils/chatPermissions';
 import { safeLocalStorage } from '../utils/chatStorage';
 import type {
@@ -28,6 +27,7 @@ import { useFileMentions } from './useFileMentions';
 import { type SlashCommand, useSlashCommands } from './useSlashCommands';
 
 type PendingViewSession = {
+  sessionId?: string | null;
   startedAt: number;
 };
 
@@ -56,6 +56,8 @@ interface UseChatComposerStateArgs {
   pendingViewSessionRef: { current: PendingViewSession | null };
   scrollToBottom: () => void;
   addMessage: (msg: ChatMessage) => void;
+  clearMessages: () => void;
+  rewindMessages: (count: number) => void;
   setIsLoading: (loading: boolean) => void;
   setCanAbortSession: (canAbort: boolean) => void;
   setClaudeStatus: (status: { text: string; tokens: number; can_interrupt: boolean } | null) => void;
@@ -93,6 +95,69 @@ export interface QueuedChatMessage {
   updatedAt: string;
 }
 
+export type ModelCommandData = {
+  current?: {
+    provider?: string;
+    providerLabel?: string;
+    model?: string;
+  };
+  available?: Partial<Record<LLMProvider, string[]>>;
+  availableModels?: string[];
+  availableOptions?: Array<{
+    value: string;
+    label?: string;
+    description?: string;
+  }>;
+  defaultModel?: string;
+  cache?: ProviderModelsCacheInfo;
+};
+
+export type CostCommandData = {
+  tokenUsage?: {
+    used?: number;
+    total?: number;
+  };
+  tokenBreakdown?: {
+    input?: number;
+    output?: number;
+  };
+  provider?: string;
+  model?: string;
+};
+
+export type StatusCommandData = {
+  version?: string;
+  packageName?: string;
+  uptime?: string;
+  model?: string;
+  provider?: string;
+  nodeVersion?: string;
+  platform?: string;
+  pid?: number;
+  memoryUsage?: {
+    rssMb?: number;
+    heapUsedMb?: number;
+    heapTotalMb?: number;
+  };
+};
+
+export type HelpCommandData = {
+  content?: string;
+  format?: string;
+  commands?: Array<{
+    name: string;
+    description?: string;
+    namespace?: string;
+  }>;
+};
+
+export type CommandModalKind = 'help' | 'models' | 'cost' | 'status';
+
+export type CommandModalPayload = {
+  kind: CommandModalKind;
+  data: HelpCommandData | ModelCommandData | CostCommandData | StatusCommandData;
+};
+
 const createFakeSubmitEvent = () => {
   return { preventDefault: () => undefined } as unknown as FormEvent<HTMLFormElement>;
 };
@@ -105,6 +170,19 @@ const waitForNextPaint = () =>
     }
     window.requestAnimationFrame(() => resolve());
   });
+
+const scheduleScrollToBottom = (scrollToBottom: () => void) => {
+  if (typeof window === 'undefined') {
+    scrollToBottom();
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+  });
+};
 
 const scheduleOptimisticSendUi = ({
   addMessage,
@@ -182,6 +260,8 @@ export function useChatComposerState({
   pendingViewSessionRef,
   scrollToBottom,
   addMessage,
+  clearMessages,
+  rewindMessages,
   setIsLoading,
   setCanAbortSession,
   setClaudeStatus,
@@ -201,9 +281,9 @@ export function useChatComposerState({
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map());
   const [imageErrors, setImageErrors] = useState<Map<string, string>>(new Map());
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
-  const [thinkingMode, setThinkingMode] = useState('none');
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const [isLoadingQueuedMessages, setIsLoadingQueuedMessages] = useState(false);
+  const [commandModalPayload, setCommandModalPayload] = useState<CommandModalPayload | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHighlightRef = useRef<HTMLDivElement>(null);
@@ -578,8 +658,9 @@ export function useChatComposerState({
     if (provider === 'cursor') return cursorModel;
     if (provider === 'codex') return codexModel;
     if (provider === 'gemini') return geminiModel;
+    if (provider === 'opencode') return opencodeModel;
     return claudeModel;
-  }, [claudeModel, codexModel, cursorModel, geminiModel, provider]);
+  }, [claudeModel, codexModel, cursorModel, geminiModel, opencodeModel, provider]);
 
   const refreshQueuedMessages = useCallback(async (sessionId: string) => {
     setIsLoadingQueuedMessages(true);
@@ -795,7 +876,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        window.setTimeout(() => scrollToBottom(), 0);
+        scheduleScrollToBottom(scrollToBottom);
       }
 
       const getToolsSettings = () => {
@@ -910,7 +991,6 @@ export function useChatComposerState({
 
       if (shouldClearComposer) {
         resetComposerAfterHandledInput();
-        setThinkingMode('none');
         // Let the input clear paint before the heavier chat-list updates kick in.
         await waitForNextPaint();
         scheduleOptimisticSendUi({
@@ -921,7 +1001,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        window.setTimeout(() => scrollToBottom(), 0);
+        scheduleScrollToBottom(scrollToBottom);
       }
 
       return true;
@@ -934,6 +1014,8 @@ export function useChatComposerState({
       currentSessionId,
       cursorModel,
       geminiModel,
+      opencodeModel,
+      isLoading,
       onSessionActive,
       onSessionProcessing,
       pendingViewSessionRef,
@@ -948,7 +1030,6 @@ export function useChatComposerState({
       setClaudeStatus,
       setIsLoading,
       setIsUserScrolledUp,
-      thinkingMode,
       uploadImages,
     ],
   );
@@ -1412,5 +1493,8 @@ export function useChatComposerState({
     isLoadingQueuedMessages,
     updateQueuedMessage,
     deleteQueuedMessage,
+    commandModalPayload,
+    closeCommandModal,
+    showCostModal,
   };
 }

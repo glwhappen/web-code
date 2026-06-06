@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import Database from 'better-sqlite3';
 
-import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/database/index.js';
+import { closeConnection, initializeDatabase, sessionsDb, userDb } from '@/modules/database/index.js';
 import { OpenCodeSessionSynchronizer } from '@/modules/providers/list/opencode/opencode-session-synchronizer.provider.js';
 import { OpenCodeSessionsProvider } from '@/modules/providers/list/opencode/opencode-sessions.provider.js';
 
@@ -254,12 +254,14 @@ test('OpenCode session synchronizer indexes sqlite sessions without deletable tr
   try {
     await createOpenCodeDatabase(tempRoot, workspacePath);
     await withIsolatedDatabase(() => {
+      const createdUser = userDb.createUser('test-user', 'hash');
+      const ownerUserId = Number(createdUser.id);
       const synchronizer = new OpenCodeSessionSynchronizer();
-      const processed = synchronizer.synchronize();
+      const processed = synchronizer.synchronize(undefined, ownerUserId);
 
       return Promise.resolve(processed).then((count) => {
         assert.equal(count, 1);
-        const indexed = sessionsDb.getSessionById('open-session-1');
+        const indexed = sessionsDb.getSessionById(ownerUserId, 'open-session-1');
         assert.equal(indexed?.provider, 'opencode');
         assert.equal(indexed?.project_path, workspacePath);
         assert.equal(indexed?.custom_name, 'OpenCode indexed title');
