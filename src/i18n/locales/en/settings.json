@@ -97,6 +97,7 @@
     "tasks": "Tasks",
     "notifications": "Notifications",
     "plugins": "Plugins",
+    "projectRouting": "Domains & Ports",
     "about": "About"
   },
   "notifications": {
@@ -151,6 +152,55 @@
         "label": "Font Size",
         "description": "Editor font size in pixels"
       }
+    }
+  },
+  "projectPreviewPorts": {
+    "title": "Project Preview Ports",
+    "description": "Map each project hostname to the ports used by its production and development preview servers.",
+    "emptyState": "Create a project first to configure preview ports.",
+    "prodPort": "Production Port",
+    "devPort": "Development Port",
+    "prodHint": "Used by `project.code.glwsq.cn`",
+    "devHint": "Used by `project_dev.code.glwsq.cn`",
+    "portPlaceholder": "e.g. 10003",
+    "validation": {
+      "invalidPort": "Port must be between 1 and 65535"
+    },
+    "actions": {
+      "save": "Save Ports",
+      "saving": "Saving..."
+    },
+    "status": {
+      "saved": "Saved"
+    }
+  },
+  "projectRouting": {
+    "title": "Domains & Ports",
+    "description": "Configure a separate hostname alias for each project, plus the ports used by its production and development preview servers.",
+    "emptyState": "Create a project first to configure its domain and ports.",
+    "hostAlias": "Hostname Alias",
+    "hostAliasPlaceholder": "e.g. test",
+    "hostAliasHint": "This maps to `test.code.glwsq.cn`. Leave it blank to fall back to the project-name slug.",
+    "hostnamePreview": "Preview hostname: {{host}}",
+    "prodPort": "Production Port",
+    "devPort": "Development Port",
+    "prodHint": "Used by `test.code.glwsq.cn`",
+    "devHint": "Used by `test_dev.code.glwsq.cn`",
+    "portPlaceholder": "e.g. 10003",
+    "validation": {
+      "invalidAlias": "The hostname alias can only contain letters, numbers, and hyphens",
+      "invalidPort": "Port must be between 1 and 65535",
+      "samePorts": "Production and development ports must not be the same",
+      "duplicateDomain": "Domain alias is already used by project “{{project}}”",
+      "duplicatePort": "Port {{port}} is already used by project “{{project}}”"
+    },
+    "actions": {
+      "save": "Save Mapping",
+      "saving": "Saving..."
+    },
+    "status": {
+      "saved": "Saved",
+      "error": "Save failed"
     }
   },
   "mcpForm": {

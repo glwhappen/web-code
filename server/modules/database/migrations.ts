@@ -94,7 +94,17 @@ const migrateLegacyWorkspaceTableIntoProjects = (db: Database): void => {
 
   console.log('Running migration: Migrating workspace_original_paths data into projects');
   db.exec(`
-    INSERT INTO projects (project_id, user_id, project_path, custom_project_name, isStarred, isArchived)
+    INSERT INTO projects (
+      project_id,
+      user_id,
+      project_path,
+      custom_project_name,
+      project_host_alias,
+      preview_prod_port,
+      preview_dev_port,
+      isStarred,
+      isArchived
+    )
     SELECT
       CASE
         WHEN workspace_id IS NULL OR trim(workspace_id) = ''
@@ -107,12 +117,17 @@ const migrateLegacyWorkspaceTableIntoProjects = (db: Database): void => {
       ),
       workspace_path,
       custom_workspace_name,
+      NULL,
+      NULL,
+      NULL,
       COALESCE(isStarred, 0),
       0
     FROM workspace_original_paths
     WHERE workspace_path IS NOT NULL AND trim(workspace_path) <> ''
     ON CONFLICT(user_id, project_path) DO UPDATE SET
       custom_project_name = COALESCE(projects.custom_project_name, excluded.custom_project_name),
+      preview_prod_port = COALESCE(projects.preview_prod_port, excluded.preview_prod_port),
+      preview_dev_port = COALESCE(projects.preview_dev_port, excluded.preview_dev_port),
       isStarred = COALESCE(projects.isStarred, excluded.isStarred)
   `);
 };
@@ -134,6 +149,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
 
   if (!shouldRebuild) {
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'custom_project_name', 'TEXT DEFAULT NULL');
+    addColumnToTableIfNotExists(db, 'projects', columnNames, 'project_host_alias', 'TEXT DEFAULT NULL');
+    addColumnToTableIfNotExists(db, 'projects', columnNames, 'preview_prod_port', 'INTEGER DEFAULT NULL');
+    addColumnToTableIfNotExists(db, 'projects', columnNames, 'preview_dev_port', 'INTEGER DEFAULT NULL');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'isStarred', 'BOOLEAN DEFAULT 0');
     addColumnToTableIfNotExists(db, 'projects', columnNames, 'isArchived', 'BOOLEAN DEFAULT 0');
     db.exec(`
@@ -184,6 +202,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id INTEGER NOT NULL,
         project_path TEXT NOT NULL,
         custom_project_name TEXT DEFAULT NULL,
+        project_host_alias TEXT DEFAULT NULL,
+        preview_prod_port INTEGER DEFAULT NULL,
+        preview_dev_port INTEGER DEFAULT NULL,
         isStarred BOOLEAN DEFAULT 0,
         isArchived BOOLEAN DEFAULT 0,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -196,6 +217,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           ${userIdExpression} AS user_id,
           ${projectPathExpression} AS project_path,
           ${customProjectNameExpression} AS custom_project_name,
+          NULL AS project_host_alias,
+          NULL AS preview_prod_port,
+          NULL AS preview_dev_port,
           ${isStarredExpression} AS isStarred,
           ${isArchivedExpression} AS isArchived,
           ${projectIdExpression} AS candidate_project_id,
@@ -208,6 +232,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           user_id,
           project_path,
           custom_project_name,
+          project_host_alias,
+          preview_prod_port,
+          preview_dev_port,
           isStarred,
           isArchived,
           candidate_project_id,
@@ -225,6 +252,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
           user_id,
           project_path,
           custom_project_name,
+          project_host_alias,
+          preview_prod_port,
+          preview_dev_port,
           isStarred,
           isArchived
         FROM deduped_paths
@@ -235,6 +265,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id,
         project_path,
         custom_project_name,
+        project_host_alias,
+        preview_prod_port,
+        preview_dev_port,
         isStarred,
         isArchived
       )
@@ -243,6 +276,9 @@ const rebuildProjectsTableWithPrimaryKeySchema = (db: Database): void => {
         user_id,
         project_path,
         custom_project_name,
+        project_host_alias,
+        preview_prod_port,
+        preview_dev_port,
         isStarred,
         isArchived
       FROM prepared_rows
@@ -423,11 +459,22 @@ const ensureProjectsForSessionPaths = (db: Database): void => {
   }
 
   db.exec(`
-    INSERT INTO projects (project_id, user_id, project_path, custom_project_name, isStarred, isArchived)
+    INSERT INTO projects (
+      project_id,
+      user_id,
+      project_path,
+      custom_project_name,
+      preview_prod_port,
+      preview_dev_port,
+      isStarred,
+      isArchived
+    )
     SELECT
       ${SQLITE_UUID_SQL},
       user_id,
       project_path,
+      NULL,
+      NULL,
       NULL,
       0,
       0

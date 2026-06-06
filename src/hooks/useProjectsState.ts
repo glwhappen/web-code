@@ -11,6 +11,7 @@ import type {
   ProjectSession,
   ProjectsUpdatedMessage,
 } from '../types/app';
+import { parseProjectHost, projectDisplayNameToHostLabel } from '../../shared/projectHosts.js';
 
 type UseProjectsStateArgs = {
   sessionId?: string;
@@ -45,6 +46,9 @@ const projectsHaveChanges = (
       nextProject.projectId !== prevProject.projectId ||
       nextProject.displayName !== prevProject.displayName ||
       nextProject.fullPath !== prevProject.fullPath ||
+      nextProject.projectHostAlias !== prevProject.projectHostAlias ||
+      nextProject.previewProdPort !== prevProject.previewProdPort ||
+      nextProject.previewDevPort !== prevProject.previewDevPort ||
       Boolean(nextProject.isStarred) !== Boolean(prevProject.isStarred) ||
       serialize(nextProject.sessionMeta) !== serialize(prevProject.sessionMeta) ||
       serialize(nextProject.sessions) !== serialize(prevProject.sessions) ||
@@ -250,6 +254,14 @@ export function useProjectsState({
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSession, setSelectedSession] = useState<ProjectSession | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(readPersistedTab);
+  const [projectHostInfo] = useState(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return parseProjectHost(window.location.hostname);
+  });
+  const appliedProjectHostRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
@@ -377,6 +389,17 @@ export function useProjectsState({
   }, [fetchProjects]);
 
   useEffect(() => {
+    const handleProjectsRefreshRequest = () => {
+      void fetchProjects({ showLoadingState: false });
+    };
+
+    window.addEventListener('projects-refresh-request', handleProjectsRefreshRequest);
+    return () => {
+      window.removeEventListener('projects-refresh-request', handleProjectsRefreshRequest);
+    };
+  }, [fetchProjects]);
+
+  useEffect(() => {
     if (!selectedProject?.projectId) {
       return;
     }
@@ -390,6 +413,32 @@ export function useProjectsState({
       setSelectedProject(projects[0]);
     }
   }, [isLoadingProjects, projects, selectedProject, sessionId]);
+
+  useEffect(() => {
+    if (!projectHostInfo || sessionId || selectedProject || projects.length === 0) {
+      return;
+    }
+
+    if (appliedProjectHostRef.current === projectHostInfo.projectLabel) {
+      return;
+    }
+
+    const matchedProject = projects.find(
+      (project) => {
+        const hostLabel = project.projectHostAlias
+          ? project.projectHostAlias
+          : projectDisplayNameToHostLabel(project.displayName, project.path || project.fullPath || '');
+        return hostLabel === projectHostInfo.projectLabel;
+      },
+    );
+
+    if (!matchedProject) {
+      return;
+    }
+
+    appliedProjectHostRef.current = projectHostInfo.projectLabel;
+    setSelectedProject(matchedProject);
+  }, [projectHostInfo, projects, selectedProject, sessionId]);
 
   useEffect(() => {
     if (!latestMessage) {

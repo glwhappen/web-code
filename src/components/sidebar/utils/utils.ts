@@ -218,10 +218,16 @@ export const normalizeProjectForSettings = (project: Project): SettingsProject =
       typeof project.displayName === 'string' && project.displayName.trim().length > 0
         ? project.displayName
         : project.projectId,
+    projectHostAlias:
+      typeof project.projectHostAlias === 'string' && project.projectHostAlias.trim().length > 0
+        ? project.projectHostAlias.trim()
+        : null,
     fullPath: fallbackPath,
     path:
       typeof project.path === 'string' && project.path.length > 0
         ? project.path
         : fallbackPath,
+    previewProdPort: typeof project.previewProdPort === 'number' ? project.previewProdPort : null,
+    previewDevPort: typeof project.previewDevPort === 'number' ? project.previewDevPort : null,
   };
 };

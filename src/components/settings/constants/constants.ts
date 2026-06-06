@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import {
   Bell,
   Bot,
+  Globe,
   GitBranch,
   Info,
   KeyRound,
@@ -35,6 +36,7 @@ export const SETTINGS_MAIN_TABS: SettingsMainTabMeta[] = [
   { id: 'tasks', label: 'Tasks', keywords: 'tasks taskmaster', icon: ListChecks },
   { id: 'notifications', label: 'Notifications', keywords: 'notifications alerts push', icon: Bell },
   { id: 'plugins', label: 'Plugins', keywords: 'plugins extensions integrations', icon: Plug },
+  { id: 'projects', label: 'Project Routing', keywords: 'projects domains ports routing preview hostname', icon: Globe },
   { id: 'users', label: 'User Management', keywords: 'users admin accounts', icon: Users },
   { id: 'about', label: 'About', keywords: 'about version info', icon: Info },
 ];

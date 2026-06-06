@@ -1,12 +1,19 @@
 import express from 'express';
 
-import { createProject, updateProjectDisplayName } from '@/modules/projects/services/project-management.service.js';
+import {
+  createProject,
+  updateProjectDisplayName,
+  updateProjectRouting,
+  updateProjectPreviewPorts,
+} from '@/modules/projects/services/project-management.service.js';
 import { startCloneProject } from '@/modules/projects/services/project-clone.service.js';
 import { getProjectTaskMaster } from '@/modules/projects/services/projects-has-taskmaster.service.js';
 import { AppError, asyncHandler, createApiSuccessResponse } from '@/shared/utils.js';
 import { getArchivedProjectsWithSessions, getProjectSessionsPage, getProjectsWithSessions } from '@/modules/projects/services/projects-with-sessions-fetch.service.js';
 import { deleteOrArchiveProject, restoreArchivedProject } from '@/modules/projects/services/project-delete.service.js';
 import { applyLegacyStarredProjectIds, toggleProjectStar } from '@/modules/projects/services/project-star.service.js';
+
+import { normalizeProjectHostLabel } from '../../../shared/projectHosts.js';
 
 const router = express.Router();
 
@@ -66,6 +73,32 @@ function readOptionalNumericQueryValue(value: unknown): number | null {
 
   const parsedValue = Number.parseInt(rawValue, 10);
   return Number.isNaN(parsedValue) ? null : parsedValue;
+}
+
+function readOptionalPortValue(value: unknown): number | null {
+  const port = readOptionalNumericQueryValue(value);
+  if (port === null) {
+    return null;
+  }
+
+  if (port < 1 || port > 65535) {
+    throw new AppError('Port must be between 1 and 65535', {
+      code: 'INVALID_PORT_VALUE',
+      statusCode: 400,
+    });
+  }
+
+  return port;
+}
+
+function readOptionalHostAliasValue(value: unknown): string | null {
+  const rawValue = readQueryStringValue(value).trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalizedValue = normalizeProjectHostLabel(rawValue);
+  return normalizedValue.length > 0 ? normalizedValue : null;
 }
 
 function parseNonNegativeIntQuery(value: unknown, name: string, fallback: number): number {
@@ -133,6 +166,8 @@ router.post(
     const requestBody = req.body as Record<string, unknown>;
     const projectPath = typeof requestBody.path === 'string' ? requestBody.path : '';
     const customName = typeof requestBody.customName === 'string' ? requestBody.customName : null;
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
 
     if (requestBody.workspaceType !== undefined) {
       throw new AppError('workspaceType is no longer supported. Use the single create-project flow.', {
@@ -154,6 +189,8 @@ router.post(
       username: getAuthenticatedUsername(req),
       projectPath,
       customName,
+      previewProdPort,
+      previewDevPort,
     });
 
     res.json({
@@ -258,17 +295,55 @@ router.get(
   }),
 );
 
-router.put('/:projectId/rename', (req, res) => {
-  try {
+router.put(
+  '/:projectId/rename',
+  asyncHandler(async (req, res) => {
     const userId = getAuthenticatedUserId(req);
     const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
     const { displayName } = req.body as { displayName?: unknown };
     updateProjectDisplayName(userId, projectId, displayName);
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to rename project' });
-  }
-});
+  }),
+);
+
+router.put(
+  '/:projectId/preview-ports',
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
+    const requestBody = req.body as Record<string, unknown>;
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
+
+    updateProjectPreviewPorts(userId, projectId, previewProdPort, previewDevPort);
+    res.json({
+      success: true,
+      previewProdPort,
+      previewDevPort,
+    });
+  }),
+);
+
+router.put(
+  '/:projectId/preview-routing',
+  asyncHandler(async (req, res) => {
+    const userId = getAuthenticatedUserId(req);
+    const projectId = typeof req.params.projectId === 'string' ? req.params.projectId : '';
+    const requestBody = req.body as Record<string, unknown>;
+    const projectHostAlias = typeof requestBody.projectHostAlias === 'string' ? requestBody.projectHostAlias : '';
+    const previewProdPort = readOptionalPortValue(requestBody.previewProdPort);
+    const previewDevPort = readOptionalPortValue(requestBody.previewDevPort);
+    const normalizedProjectHostAlias = readOptionalHostAliasValue(projectHostAlias);
+
+    updateProjectRouting(userId, projectId, projectHostAlias, previewProdPort, previewDevPort);
+    res.json({
+      success: true,
+      projectHostAlias: normalizedProjectHostAlias,
+      previewProdPort,
+      previewDevPort,
+    });
+  }),
+);
 
 router.post(
   '/:projectId/toggle-star',

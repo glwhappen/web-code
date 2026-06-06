@@ -59,6 +59,9 @@ export interface Project {
   fullPath: string;
   path?: string;
   isStarred?: boolean;
+  projectHostAlias?: string | null;
+  previewProdPort?: number | null;
+  previewDevPort?: number | null;
   sessions?: ProjectSession[];
   cursorSessions?: ProjectSession[];
   codexSessions?: ProjectSession[];

@@ -70,6 +70,7 @@ import settingsRoutes from './routes/settings.js';
 import agentRoutes from './routes/agent.js';
 import adminRoutes from './routes/admin.js';
 import projectModuleRoutes from './modules/projects/projects.routes.js';
+import { proxyProjectPreviewRequest } from './modules/projects/services/project-preview-proxy.service.js';
 import userRoutes from './routes/user.js';
 import geminiRoutes from './routes/gemini.js';
 import pluginsRoutes from './routes/plugins.js';
@@ -154,6 +155,18 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+app.use(async (req, res, next) => {
+    try {
+        const handled = await proxyProjectPreviewRequest(req, res);
+        if (handled) {
+            return;
+        }
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
 
 // Public health check endpoint (no authentication required)
 app.get('/health', (req, res) => {
