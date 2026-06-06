@@ -21,6 +21,13 @@ export class WebSocketWriter {
   send(data: unknown): void {
     if (this.ws.readyState === WS_OPEN_STATE) {
       this.ws.send(JSON.stringify(data));
+    } else {
+      const kind = (data as Record<string, unknown>)?.kind;
+      if (kind === 'complete' || kind === 'error') {
+        console.warn(
+          `[WebSocketWriter] Dropped "${kind}" event — socket not open (readyState=${this.ws.readyState}, session=${this.sessionId})`,
+        );
+      }
     }
   }
 

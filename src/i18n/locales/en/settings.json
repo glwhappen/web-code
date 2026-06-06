@@ -215,11 +215,13 @@
     "description": "Configure your git identity for commits. These settings will be applied globally via git config --global",
     "name": {
       "label": "Git Name",
-      "help": "Your name for git commits"
+      "help": "Your name for git commits",
+      "placeholder": "John Doe"
     },
     "email": {
       "label": "Git Email",
-      "help": "Your email for git commits"
+      "help": "Your email for git commits",
+      "placeholder": "john@example.com"
     },
     "actions": {
       "save": "Save Configuration",

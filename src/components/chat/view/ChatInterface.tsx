@@ -161,6 +161,7 @@ function ChatInterface({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     attachedImages,
     setAttachedImages,
     uploadingImages,
@@ -276,6 +277,22 @@ function ChatInterface({
       document.removeEventListener('keydown', handleGlobalEscape, { capture: true });
     };
   }, [canAbortSession, handleAbortSession, isLoading]);
+
+  // Safety net: periodically verify with the server that the session is still
+  // active while isLoading is true. Catches silently-dropped "complete" events
+  // (e.g. WebSocket was briefly not in OPEN state when the server sent it).
+  useEffect(() => {
+    const activeId = selectedSession?.id || currentSessionId;
+    if (!isLoading || !ws || !activeId) return;
+
+    const checkStatus = () => {
+      const prov = selectedSession?.__provider || localStorage.getItem('selected-provider') || 'claude';
+      sendMessage({ type: 'check-session-status', sessionId: activeId, provider: prov });
+    };
+
+    const timer = setInterval(checkStatus, 15_000);
+    return () => clearInterval(timer);
+  }, [isLoading, ws, selectedSession, currentSessionId, sendMessage]);
 
   useEffect(() => {
     return () => {
@@ -397,6 +414,7 @@ function ChatInterface({
           filteredFiles={filteredFiles}
           selectedFileIndex={selectedFileIndex}
           onSelectFile={selectFile}
+          onCloseFileDropdown={resetFileMentionState}
           filteredCommands={filteredCommands}
           selectedCommandIndex={selectedCommandIndex}
           onCommandSelect={handleCommandSelect}

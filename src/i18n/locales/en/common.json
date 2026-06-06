@@ -53,6 +53,53 @@
     "previous": "Previous",
     "logout": "Logout"
   },
+  "providerLogin": {
+    "close": "Close login modal",
+    "done": "Done",
+    "gemini": {
+      "title": "Setup Gemini API Access",
+      "description": "The Gemini CLI requires an API key to function. Configure it in your terminal first.",
+      "step1": "Get your API key",
+      "step2": "Run configuration",
+      "runCommand": "Open your terminal and run:"
+    }
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "backToAll": "Back to all",
+    "backspaceHint": "Backspace to go back",
+    "searchAnything": "Type to search anything…",
+    "searchPage": "Search {{page}}…",
+    "noResults": "No results.",
+    "settingsPrefix": "Settings:",
+    "groups": {
+      "actions": "Actions",
+      "navigate": "Navigate",
+      "git": "Git",
+      "settings": "Settings",
+      "sessions": "Sessions",
+      "files": "Files",
+      "commits": "Commits"
+    },
+    "actions": {
+      "startNewChat": "Start new chat",
+      "selectProjectFirst": "Select a project first",
+      "openSettings": "Open settings",
+      "toggleTheme": "Toggle theme",
+      "toggleThemeKeywords": "Toggle theme dark light mode"
+    },
+    "git": {
+      "fetch": "Git: Fetch",
+      "pull": "Git: Pull",
+      "push": "Git: Push",
+      "fetchKeywords": "Git Fetch remote",
+      "pullKeywords": "Git Pull merge upstream",
+      "pushKeywords": "Git Push origin remote"
+    },
+    "browseAllSessions": "Browse all sessions ({{count}})",
+    "browseAllFiles": "Browse all files ({{count}})",
+    "browseAllCommits": "Browse all commits ({{count}})"
+  },
   "common": {
     "language": "Language",
     "theme": "Theme",
@@ -174,6 +221,22 @@
       "optionalTokenPublic": "GitHub Token (Optional for Public Repos)",
       "tokenPublicPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (leave empty for public repos)"
     },
+    "folderBrowser": {
+      "title": "Select Folder",
+      "browseFolders": "Browse folders",
+      "showHidden": "Show hidden folders",
+      "hideHidden": "Hide hidden folders",
+      "toggleCreate": "Create new folder",
+      "newFolderPlaceholder": "New folder name",
+      "create": "Create",
+      "cancel": "Cancel",
+      "select": "Select",
+      "empty": "No subfolders found",
+      "path": "Path:",
+      "useCurrent": "Use this folder",
+      "loadFailed": "Failed to load folders",
+      "createFailed": "Failed to create folder"
+    },
     "step3": {
       "reviewConfig": "Review Your Configuration",
       "existingWorkspace": "Existing Workspace",
@@ -203,6 +266,41 @@
       "providePath": "Please provide a workspace path",
       "failedToCreate": "Failed to create workspace",
       "failedToCreateFolder": "Failed to create folder"
+    }
+  },
+  "onboarding": {
+    "required": "Required",
+    "steps": {
+      "git": "Git Configuration",
+      "agents": "Connect Agents"
+    },
+    "git": {
+      "title": "Git Configuration",
+      "description": "Configure your git identity to ensure proper attribution for commits.",
+      "nameLabel": "Git Name",
+      "namePlaceholder": "John Doe",
+      "nameHelp": "Saved as `git config --global user.name`.",
+      "emailLabel": "Git Email",
+      "emailPlaceholder": "john@example.com",
+      "emailHelp": "Saved as `git config --global user.email`."
+    },
+    "agents": {
+      "title": "Connect Your AI Agents",
+      "description": "Login to one or more AI coding assistants. All are optional.",
+      "footer": "You can configure these later in Settings."
+    },
+    "validation": {
+      "gitRequired": "Both git name and email are required.",
+      "invalidEmail": "Please enter a valid email address.",
+      "saveGitFailed": "Failed to save git configuration",
+      "completeFailed": "Failed to complete onboarding"
+    },
+    "actions": {
+      "previous": "Previous",
+      "next": "Next",
+      "saving": "Saving...",
+      "completing": "Completing...",
+      "complete": "Complete Setup"
     }
   },
   "notifications": {

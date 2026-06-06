@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ShieldAlertIcon } from 'lucide-react';
 
 import type { PendingPermissionRequest } from '../../types/types';
@@ -30,6 +31,7 @@ export default function PermissionRequestsBanner({
   handlePermissionDecision,
   handleGrantToolPermission,
 }: PermissionRequestsBannerProps) {
+  const { t } = useTranslation('chat');
   // Filter out plan tool requests — they are handled inline by PlanDisplay
   const filteredRequests = pendingPermissionRequests.filter(
     (r) => r.toolName !== 'ExitPlanMode' && r.toolName !== 'exit_plan_mode'
@@ -57,7 +59,7 @@ export default function PermissionRequestsBanner({
         const permissionEntry = buildClaudeToolPermissionEntry(request.toolName, rawInput);
         const settings = getClaudeSettings();
         const alreadyAllowed = permissionEntry ? settings.allowedTools.includes(permissionEntry) : false;
-        const rememberLabel = alreadyAllowed ? 'Allow (saved)' : 'Allow & remember';
+        const rememberLabel = alreadyAllowed ? t('permissionsBanner.allowSaved') : t('permissionsBanner.allowRemember');
         const matchingRequestIds = permissionEntry
           ? pendingPermissionRequests
               .filter(
@@ -73,14 +75,14 @@ export default function PermissionRequestsBanner({
               <ShieldAlertIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <ConfirmationRequest>
                 <div>
-                  <span className="font-medium text-foreground">Permission required</span>
+                  <span className="font-medium text-foreground">{t('permissionsBanner.title')}</span>
                   <span className="ml-2 text-muted-foreground">
-                    Tool: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{request.toolName}</code>
+                    {t('permissionsBanner.toolLabel')} <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{request.toolName}</code>
                   </span>
                 </div>
                 {permissionEntry && (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Allow rule: <code className="rounded bg-muted px-1 py-0.5 text-xs">{permissionEntry}</code>
+                    {t('permissionsBanner.allowRule')} <code className="rounded bg-muted px-1 py-0.5 text-xs">{permissionEntry}</code>
                   </div>
                 )}
               </ConfirmationRequest>
@@ -89,7 +91,7 @@ export default function PermissionRequestsBanner({
             {rawInput && (
               <details className="mt-2">
                 <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                  View tool input
+                  {t('permissionsBanner.viewToolInput')}
                 </summary>
                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground">
                   {rawInput}
@@ -100,9 +102,9 @@ export default function PermissionRequestsBanner({
             <ConfirmationActions>
               <ConfirmationAction
                 variant="outline"
-                onClick={() => handlePermissionDecision(request.requestId, { allow: false, message: 'User denied tool use' })}
+                onClick={() => handlePermissionDecision(request.requestId, { allow: false, message: t('permissionsBanner.deniedMessage') })}
               >
-                Deny
+                {t('permissionsBanner.deny')}
               </ConfirmationAction>
               <ConfirmationAction
                 variant="outline"
@@ -120,7 +122,7 @@ export default function PermissionRequestsBanner({
                 variant="default"
                 onClick={() => handlePermissionDecision(request.requestId, { allow: true })}
               >
-                Allow once
+                {t('permissionsBanner.allowOnce')}
               </ConfirmationAction>
             </ConfirmationActions>
           </Confirmation>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -105,19 +105,6 @@ const waitForNextPaint = () =>
     }
     window.requestAnimationFrame(() => resolve());
   });
-
-const scheduleScrollToBottom = (scrollToBottom: () => void) => {
-  if (typeof window === 'undefined') {
-    scrollToBottom();
-    return;
-  }
-
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      scrollToBottom();
-    });
-  });
-};
 
 const scheduleOptimisticSendUi = ({
   addMessage,
@@ -466,6 +453,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     setCursorPosition,
     handleFileMentionsKeyDown,
   } = useFileMentions({
@@ -788,18 +776,6 @@ export function useChatComposerState({
         timestamp: new Date(),
       };
 
-      addMessage(userMessage);
-      setIsLoading(true); // Processing banner starts
-      setCanAbortSession(true);
-      setClaudeStatus({
-        text: 'Processing',
-        tokens: 0,
-        can_interrupt: true,
-      });
-
-      setIsUserScrolledUp(false);
-      setTimeout(() => scrollToBottom(), 100);
-
       if (!effectiveSessionId && !selectedSession?.id) {
         // This tracks only that a request is in flight before the provider has
         // emitted its real session id; routing still waits for session_created.
@@ -819,7 +795,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        scheduleScrollToBottom(scrollToBottom);
+        window.setTimeout(() => scrollToBottom(), 0);
       }
 
       const getToolsSettings = () => {
@@ -945,7 +921,7 @@ export function useChatComposerState({
           setIsUserScrolledUp,
           userMessage,
         });
-        scheduleScrollToBottom(scrollToBottom);
+        window.setTimeout(() => scrollToBottom(), 0);
       }
 
       return true;
@@ -1410,6 +1386,7 @@ export function useChatComposerState({
     selectedFileIndex,
     renderInputWithMentions,
     selectFile,
+    resetFileMentionState,
     attachedImages,
     setAttachedImages,
     uploadingImages,

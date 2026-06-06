@@ -53,6 +53,53 @@
     "previous": "上一步",
     "logout": "退出登录"
   },
+  "providerLogin": {
+    "close": "关闭登录弹窗",
+    "done": "完成",
+    "gemini": {
+      "title": "配置 Gemini API 访问",
+      "description": "Gemini CLI 需要 API Key 才能正常工作。请先在终端中完成配置。",
+      "step1": "获取 API Key",
+      "step2": "运行配置命令",
+      "runCommand": "打开终端并运行："
+    }
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "backToAll": "返回全部",
+    "backspaceHint": "按 Backspace 返回上一级",
+    "searchAnything": "输入以搜索任意内容…",
+    "searchPage": "搜索{{page}}…",
+    "noResults": "没有结果。",
+    "settingsPrefix": "设置：",
+    "groups": {
+      "actions": "操作",
+      "navigate": "导航",
+      "git": "Git",
+      "settings": "设置",
+      "sessions": "会话",
+      "files": "文件",
+      "commits": "提交"
+    },
+    "actions": {
+      "startNewChat": "开始新会话",
+      "selectProjectFirst": "请先选择项目",
+      "openSettings": "打开设置",
+      "toggleTheme": "切换主题",
+      "toggleThemeKeywords": "切换主题 深色 浅色 模式"
+    },
+    "git": {
+      "fetch": "Git：抓取",
+      "pull": "Git：拉取",
+      "push": "Git：推送",
+      "fetchKeywords": "Git 抓取 远程",
+      "pullKeywords": "Git 拉取 合并 上游",
+      "pushKeywords": "Git 推送 远程"
+    },
+    "browseAllSessions": "浏览全部会话（{{count}}）",
+    "browseAllFiles": "浏览全部文件（{{count}}）",
+    "browseAllCommits": "浏览全部提交（{{count}}）"
+  },
   "common": {
     "language": "语言",
     "theme": "主题",
@@ -174,6 +221,22 @@
       "optionalTokenPublic": "GitHub 令牌（公共仓库可选）",
       "tokenPublicPlaceholder": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx（公共仓库可留空）"
     },
+    "folderBrowser": {
+      "title": "选择文件夹",
+      "browseFolders": "浏览文件夹",
+      "showHidden": "显示隐藏文件夹",
+      "hideHidden": "隐藏隐藏文件夹",
+      "toggleCreate": "新建文件夹",
+      "newFolderPlaceholder": "输入新文件夹名称",
+      "create": "创建",
+      "cancel": "取消",
+      "select": "选择",
+      "empty": "未找到子文件夹",
+      "path": "当前路径：",
+      "useCurrent": "使用当前文件夹",
+      "loadFailed": "加载文件夹失败",
+      "createFailed": "创建文件夹失败"
+    },
     "step3": {
       "reviewConfig": "查看您的配置",
       "existingWorkspace": "现有工作区",
@@ -203,6 +266,41 @@
       "providePath": "请提供工作区路径",
       "failedToCreate": "创建工作区失败",
       "failedToCreateFolder": "创建文件夹失败"
+    }
+  },
+  "onboarding": {
+    "required": "必填",
+    "steps": {
+      "git": "Git 配置",
+      "agents": "连接智能体"
+    },
+    "git": {
+      "title": "Git 配置",
+      "description": "配置 Git 身份信息，确保后续提交记录归属正确。",
+      "nameLabel": "Git 名称",
+      "namePlaceholder": "例如：张三",
+      "nameHelp": "将保存为 `git config --global user.name`。",
+      "emailLabel": "Git 邮箱",
+      "emailPlaceholder": "例如：name@example.com",
+      "emailHelp": "将保存为 `git config --global user.email`。"
+    },
+    "agents": {
+      "title": "连接 AI 智能体",
+      "description": "登录一个或多个 AI 编程助手。此步骤均为可选。",
+      "footer": "这些配置也可以稍后在“设置”中完成。"
+    },
+    "validation": {
+      "gitRequired": "请填写 Git 名称和 Git 邮箱。",
+      "invalidEmail": "请输入有效的邮箱地址。",
+      "saveGitFailed": "保存 Git 配置失败",
+      "completeFailed": "完成初始化失败"
+    },
+    "actions": {
+      "previous": "上一步",
+      "next": "下一步",
+      "saving": "保存中...",
+      "completing": "完成中...",
+      "complete": "完成设置"
     }
   },
   "notifications": {
