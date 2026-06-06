@@ -1,22 +1,28 @@
 import { X } from 'lucide-react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import ProviderLoginModal from '../../provider-auth/view/ProviderLoginModal';
+
+import { useWebPush } from '../../../hooks/useWebPush';
 import { Button } from '../../../shared/view/ui';
+import { useAuth } from '../../auth/context/AuthContext';
+import PluginSettingsTab from '../../plugins/view/PluginSettingsTab';
+import ProviderLoginModal from '../../provider-auth/view/ProviderLoginModal';
+import { useSettingsController } from '../hooks/useSettingsController';
+import type { SettingsProps } from '../types/types';
 import SettingsSidebar from '../view/SettingsSidebar';
+import AboutTab from '../view/tabs/AboutTab';
 import AgentsSettingsTab from '../view/tabs/agents-settings/AgentsSettingsTab';
 import AppearanceSettingsTab from '../view/tabs/AppearanceSettingsTab';
 import CredentialsSettingsTab from '../view/tabs/api-settings/CredentialsSettingsTab';
 import GitSettingsTab from '../view/tabs/git-settings/GitSettingsTab';
 import NotificationsSettingsTab from '../view/tabs/NotificationsSettingsTab';
 import TasksSettingsTab from '../view/tabs/tasks-settings/TasksSettingsTab';
-import PluginSettingsTab from '../../plugins/view/PluginSettingsTab';
-import AboutTab from '../view/tabs/AboutTab';
-import { useSettingsController } from '../hooks/useSettingsController';
-import { useWebPush } from '../../../hooks/useWebPush';
-import type { SettingsProps } from '../types/types';
+import UserManagementTab from '../view/tabs/UserManagementTab';
 
 function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: SettingsProps) {
   const { t } = useTranslation('settings');
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.isAdmin);
   const {
     activeTab,
     setActiveTab,
@@ -43,7 +49,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
     handleLoginComplete,
   } = useSettingsController({
     isOpen,
-    initialTab
+    initialTab,
   });
 
   const {
@@ -54,9 +60,14 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
     unsubscribe: pushUnsubscribe,
   } = useWebPush();
 
+  useEffect(() => {
+    if (activeTab === 'users' && !isAdmin) {
+      setActiveTab('agents');
+    }
+  }, [activeTab, isAdmin, setActiveTab]);
+
   const handleEnablePush = async () => {
     await pushSubscribe();
-    // Server sets webPush: true in preferences on subscribe; sync local state
     setNotificationPreferences({
       ...notificationPreferences,
       channels: { ...notificationPreferences.channels, webPush: true },
@@ -65,7 +76,6 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
 
   const handleDisablePush = async () => {
     await pushUnsubscribe();
-    // Server sets webPush: false in preferences on unsubscribe; sync local state
     setNotificationPreferences({
       ...notificationPreferences,
       channels: { ...notificationPreferences.channels, webPush: false },
@@ -81,7 +91,6 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
   return (
     <div className="modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center bg-background/80 backdrop-blur-sm md:p-4">
       <div className="flex h-full w-full flex-col overflow-hidden border border-border bg-background shadow-2xl md:h-[90vh] md:max-w-4xl md:rounded-xl">
-        {/* Header */}
         <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-5">
           <h2 className="text-base font-semibold text-foreground">{t('title')}</h2>
           <div className="flex items-center gap-2">
@@ -99,11 +108,9 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
           </div>
         </div>
 
-        {/* Body: sidebar + content */}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <SettingsSidebar activeTab={activeTab} onChange={setActiveTab} />
+          <SettingsSidebar activeTab={activeTab} onChange={setActiveTab} isAdmin={isAdmin} />
 
-          {/* Content */}
           <main className="flex-1 overflow-y-auto">
             <div key={activeTab} className="settings-content-enter space-y-6 p-4 pb-safe-area-inset-bottom md:space-y-8 md:p-6">
               {activeTab === 'appearance' && (
@@ -139,21 +146,23 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
 
               {activeTab === 'tasks' && <TasksSettingsTab />}
 
-            {activeTab === 'notifications' && (
-              <NotificationsSettingsTab
-                notificationPreferences={notificationPreferences}
-                onNotificationPreferencesChange={setNotificationPreferences}
-                pushPermission={pushPermission}
-                isPushSubscribed={isPushSubscribed}
-                isPushLoading={isPushLoading}
-                onEnablePush={handleEnablePush}
-                onDisablePush={handleDisablePush}
-              />
-            )}
+              {activeTab === 'notifications' && (
+                <NotificationsSettingsTab
+                  notificationPreferences={notificationPreferences}
+                  onNotificationPreferencesChange={setNotificationPreferences}
+                  pushPermission={pushPermission}
+                  isPushSubscribed={isPushSubscribed}
+                  isPushLoading={isPushLoading}
+                  onEnablePush={handleEnablePush}
+                  onDisablePush={handleDisablePush}
+                />
+              )}
 
               {activeTab === 'api' && <CredentialsSettingsTab />}
 
               {activeTab === 'plugins' && <PluginSettingsTab />}
+
+              {activeTab === 'users' ? (isAdmin ? <UserManagementTab currentUserId={user?.id} /> : null) : null}
 
               {activeTab === 'about' && <AboutTab />}
             </div>
@@ -169,7 +178,6 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
         onComplete={handleLoginComplete}
         isAuthenticated={isAuthenticated}
       />
-
     </div>
   );
 }

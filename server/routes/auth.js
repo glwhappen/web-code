@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+
 import { userDb } from '../modules/database/index.js';
 import { getConnection } from '../modules/database/connection.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
@@ -24,6 +25,11 @@ router.get('/status', async (req, res) => {
 // User registration
 router.post('/register', async (req, res) => {
   try {
+    const hasUsers = await userDb.hasUsers();
+    if (hasUsers) {
+      return res.status(403).json({ error: 'Public registration is disabled' });
+    }
+
     const { username, password } = req.body;
     
     // Validate input
@@ -43,7 +49,7 @@ router.post('/register', async (req, res) => {
       const passwordHash = await bcrypt.hash(password, saltRounds);
       
       // Create user
-      const user = userDb.createUser(username, passwordHash);
+      const user = userDb.createUser(username, passwordHash, { isAdmin: true });
       
       // Generate token
       const token = generateToken(user);
@@ -55,7 +61,7 @@ router.post('/register', async (req, res) => {
 
       res.json({
         success: true,
-        user: { id: user.id, username: user.username },
+        user: { id: user.id, username: user.username, isAdmin: user.isAdmin },
         token
       });
     } catch (error) {

@@ -2,8 +2,6 @@
  * User repository.
  *
  * Provides typed CRUD operations for the `users` table.
- * This is a single-user system, but the schema supports multiple
- * users for forward compatibility.
  */
 
 import { getConnection } from '@/modules/database/connection.js';
@@ -18,23 +16,49 @@ type UserRow = {
   git_name: string | null;
   git_email: string | null;
   has_completed_onboarding: number;
+  is_admin: number;
 };
 
-type UserPublicRow = Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login'>;
+type UserPublicRow = {
+  id: number;
+  username: string;
+  created_at: string;
+  last_login: string | null;
+  isAdmin: boolean;
+};
 
 type UserGitConfig = {
   git_name: string | null;
   git_email: string | null;
 };
 
-type CreateUserResult = {
-  id: number | bigint;
-  username: string;
+type CreateUserOptions = {
+  isAdmin?: boolean;
 };
 
-// ---------------------------------------------------------------------------
-// Queries
-// ---------------------------------------------------------------------------
+type CreateUserResult = {
+  id: number;
+  username: string;
+  isAdmin: boolean;
+};
+
+const normalizePublicUser = (
+  row:
+    | Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login' | 'is_admin'>
+    | undefined,
+): UserPublicRow | undefined => {
+  if (!row) {
+    return undefined;
+  }
+
+  return {
+    id: row.id,
+    username: row.username,
+    created_at: row.created_at,
+    last_login: row.last_login,
+    isAdmin: row.is_admin === 1,
+  };
+};
 
 export const userDb = {
   /** Returns true if at least one user exists in the database. */
@@ -46,19 +70,22 @@ export const userDb = {
     return row.count > 0;
   },
 
-  /** Inserts a new user and returns the created ID + username. */
-  createUser(username: string, passwordHash: string): CreateUserResult {
+  /** Inserts a new user and returns the created public fields. */
+  createUser(username: string, passwordHash: string, options: CreateUserOptions = {}): CreateUserResult {
     const db = getConnection();
+    const isAdmin = options.isAdmin ?? false;
     const result = db
-      .prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)')
-      .run(username, passwordHash);
-    return { id: result.lastInsertRowid, username };
+      .prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)')
+      .run(username, passwordHash, isAdmin ? 1 : 0);
+
+    return {
+      id: Number(result.lastInsertRowid),
+      username,
+      isAdmin,
+    };
   },
 
-  /**
-   * Looks up an active user by username.
-   * Returns the full row (including password hash) for auth verification.
-   */
+  /** Looks up an active user by username, including password hash for auth verification. */
   getUserByUsername(username: string): UserRow | undefined {
     const db = getConnection();
     return db
@@ -70,9 +97,7 @@ export const userDb = {
   updateLastLogin(userId: number): void {
     try {
       const db = getConnection();
-      db.prepare(
-        'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?'
-      ).run(userId);
+      db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(userId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Failed to update last login', { error: message });
@@ -82,34 +107,51 @@ export const userDb = {
   /** Returns public user fields by ID (no password hash). */
   getUserById(userId: number): UserPublicRow | undefined {
     const db = getConnection();
-    return db
+    const row = db
       .prepare(
-        'SELECT id, username, created_at, last_login FROM users WHERE id = ? AND is_active = 1'
+        'SELECT id, username, created_at, last_login, is_admin FROM users WHERE id = ? AND is_active = 1'
       )
-      .get(userId) as UserPublicRow | undefined;
+      .get(userId) as Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login' | 'is_admin'> | undefined;
+
+    return normalizePublicUser(row);
   },
 
   /** Returns the first active user. Used for single-user mode lookups. */
   getFirstUser(): UserPublicRow | undefined {
     const db = getConnection();
-    return db
+    const row = db
       .prepare(
-        'SELECT id, username, created_at, last_login FROM users WHERE is_active = 1 LIMIT 1'
+        'SELECT id, username, created_at, last_login, is_admin FROM users WHERE is_active = 1 ORDER BY id ASC LIMIT 1'
       )
-      .get() as UserPublicRow | undefined;
+      .get() as Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login' | 'is_admin'> | undefined;
+
+    return normalizePublicUser(row);
+  },
+
+  listUsers(): UserPublicRow[] {
+    const db = getConnection();
+    const rows = db
+      .prepare(
+        'SELECT id, username, created_at, last_login, is_admin FROM users WHERE is_active = 1 ORDER BY id ASC'
+      )
+      .all() as Array<Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login' | 'is_admin'>>;
+
+    return rows.map((row) => normalizePublicUser(row)).filter(Boolean) as UserPublicRow[];
+  },
+
+  deleteUser(userId: number): boolean {
+    const db = getConnection();
+    const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    return result.changes > 0;
   },
 
   /** Stores the user's preferred git name and email. */
-  updateGitConfig(
-    userId: number,
-    gitName: string,
-    gitEmail: string
-  ): void {
+  updateGitConfig(userId: number, gitName: string, gitEmail: string): void {
     const db = getConnection();
     db.prepare('UPDATE users SET git_name = ?, git_email = ? WHERE id = ?').run(
       gitName,
       gitEmail,
-      userId
+      userId,
     );
   },
 
@@ -124,9 +166,7 @@ export const userDb = {
   /** Marks onboarding as complete for the given user. */
   completeOnboarding(userId: number): void {
     const db = getConnection();
-    db.prepare(
-      'UPDATE users SET has_completed_onboarding = 1 WHERE id = ?'
-    ).run(userId);
+    db.prepare('UPDATE users SET has_completed_onboarding = 1 WHERE id = ?').run(userId);
   },
 
   /** Returns true if the user has finished the onboarding flow. */

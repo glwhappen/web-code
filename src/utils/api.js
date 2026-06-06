@@ -48,6 +48,16 @@ export const api = {
     user: () => authenticatedFetch('/api/auth/user'),
     logout: () => authenticatedFetch('/api/auth/logout', { method: 'POST' }),
   },
+  admin: {
+    users: () => authenticatedFetch('/api/admin/users'),
+    createUser: (username, password) => authenticatedFetch('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+    deleteUser: (userId) => authenticatedFetch(`/api/admin/users/${encodeURIComponent(String(userId))}`, {
+      method: 'DELETE',
+    }),
+  },
 
   // Protected endpoints
   // config endpoint removed - no longer needed (frontend uses window.location)

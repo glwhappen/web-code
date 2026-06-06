@@ -1,7 +1,9 @@
-import { Settings, ArrowUpCircle, Bug } from 'lucide-react';
+import { Settings, ArrowUpCircle, Bug, LogOut } from 'lucide-react';
 import type { TFunction } from 'i18next';
+
 import { IS_PLATFORM } from '../../../../constants/config';
 import type { ReleaseInfo } from '../../../../types/sharedTypes';
+import { useAuth } from '../../../auth/context/AuthContext';
 
 const GITHUB_ISSUES_URL = 'https://github.com/siteboon/claudecodeui/issues/new';
 const GITHUB_REPO_URL = 'https://github.com/siteboon/claudecodeui';
@@ -35,13 +37,13 @@ export default function SidebarFooter({
   onShowSettings,
   t,
 }: SidebarFooterProps) {
+  const { logout } = useAuth();
+
   return (
     <div className="flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}>
-      {/* Update banner */}
-      {updateAvailable && (
+      {updateAvailable ? (
         <>
           <div className="nav-divider" />
-          {/* Desktop update */}
           <div className="hidden px-2 py-1.5 md:block">
             <button
               className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50/80 dark:hover:bg-blue-900/15"
@@ -62,14 +64,13 @@ export default function SidebarFooter({
             </button>
           </div>
 
-          {/* Mobile update */}
           <div className="px-3 py-2 md:hidden">
             <button
               className="flex h-11 w-full items-center gap-3 rounded-xl border border-blue-200/60 bg-blue-50/80 px-3.5 transition-all active:scale-[0.98] dark:border-blue-700/40 dark:bg-blue-900/15"
               onClick={onShowVersionModal}
             >
               <div className="relative flex-shrink-0">
-                <ArrowUpCircle className="w-4.5 h-4.5 text-blue-500 dark:text-blue-400" />
+                <ArrowUpCircle className="h-4.5 w-4.5 text-blue-500 dark:text-blue-400" />
                 <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
               </div>
               <div className="min-w-0 flex-1 text-left">
@@ -83,12 +84,10 @@ export default function SidebarFooter({
             </button>
           </div>
         </>
-      )}
+      ) : null}
 
-      {/* Community + Settings */}
       <div className="nav-divider" />
 
-      {/* Desktop Report Issue */}
       <div className="hidden px-2 pt-1.5 md:block">
         <a
           href={GITHUB_ISSUES_URL}
@@ -101,7 +100,6 @@ export default function SidebarFooter({
         </a>
       </div>
 
-      {/* Desktop Discord */}
       <div className="hidden px-2 md:block">
         <a
           href={DISCORD_INVITE_URL}
@@ -114,7 +112,6 @@ export default function SidebarFooter({
         </a>
       </div>
 
-      {/* Desktop settings */}
       <div className="hidden px-2 py-1.5 md:block">
         <button
           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
@@ -125,7 +122,16 @@ export default function SidebarFooter({
         </button>
       </div>
 
-      {/* Desktop version brand line (OSS mode only) */}
+      <div className="hidden px-2 pb-1.5 md:block">
+        <button
+          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+          onClick={logout}
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          <span className="text-sm">退出登录</span>
+        </button>
+      </div>
+
       {!IS_PLATFORM && (
         <div className="hidden px-3 py-2 text-center md:block">
           <a
@@ -139,7 +145,6 @@ export default function SidebarFooter({
         </div>
       )}
 
-      {/* Mobile Report Issue */}
       <div className="px-3 pt-3 md:hidden">
         <a
           href={GITHUB_ISSUES_URL}
@@ -148,13 +153,12 @@ export default function SidebarFooter({
           className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
-            <Bug className="w-4.5 h-4.5 text-muted-foreground" />
+            <Bug className="h-4.5 w-4.5 text-muted-foreground" />
           </div>
           <span className="text-base font-medium text-foreground">{t('actions.reportIssue')}</span>
         </a>
       </div>
 
-      {/* Mobile Discord */}
       <div className="px-3 pt-2 md:hidden">
         <a
           href={DISCORD_INVITE_URL}
@@ -163,22 +167,33 @@ export default function SidebarFooter({
           className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
-            <DiscordIcon className="w-4.5 h-4.5 text-muted-foreground" />
+            <DiscordIcon className="h-4.5 w-4.5 text-muted-foreground" />
           </div>
           <span className="text-base font-medium text-foreground">{t('actions.joinCommunity')}</span>
         </a>
       </div>
 
-      {/* Mobile settings */}
-      <div className="px-3 pb-3 pt-2 md:hidden">
+      <div className="px-3 pt-2 md:hidden">
         <button
           className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-muted/40 px-4 transition-all hover:bg-muted/60 active:scale-[0.98]"
           onClick={onShowSettings}
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
-            <Settings className="w-4.5 h-4.5 text-muted-foreground" />
+            <Settings className="h-4.5 w-4.5 text-muted-foreground" />
           </div>
           <span className="text-base font-medium text-foreground">{t('actions.settings')}</span>
+        </button>
+      </div>
+
+      <div className="px-3 pb-3 pt-2 md:hidden">
+        <button
+          className="flex h-12 w-full items-center gap-3.5 rounded-xl bg-red-50 px-4 transition-all hover:bg-red-100 active:scale-[0.98] dark:bg-red-900/20 dark:hover:bg-red-900/30"
+          onClick={logout}
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-background/80">
+            <LogOut className="h-4.5 w-4.5 text-red-600 dark:text-red-300" />
+          </div>
+          <span className="text-base font-medium text-red-600 dark:text-red-300">退出登录</span>
         </button>
       </div>
     </div>
