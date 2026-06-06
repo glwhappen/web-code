@@ -5,7 +5,7 @@ import path from 'node:path';
 import { githubTokensDb } from '@/modules/database/index.js';
 import { createProject } from '@/modules/projects/services/project-management.service.js';
 import type { WorkspacePathValidationResult } from '@/shared/types.js';
-import { AppError, ensureUserWorkspaceRoot, validateWorkspacePath } from '@/shared/utils.js';
+import { AppError, buildUserProcessEnv, ensureUserWorkspaceRoot, validateWorkspacePath } from '@/shared/utils.js';
 
 type CloneProjectInput = {
   workspacePath: string;
@@ -44,7 +44,7 @@ type CloneProjectDependencies = {
     tokenId: number,
     userId: number,
   ) => Promise<{ github_token: string } | null>;
-  spawnGitClone: (cloneUrl: string, clonePath: string) => GitCloneProcess;
+  spawnGitClone: (cloneUrl: string, clonePath: string, username: string) => Promise<GitCloneProcess>;
   registerProject: (
     userId: number,
     username: string,
@@ -132,14 +132,16 @@ const defaultDependencies: CloneProjectDependencies = {
       | null;
     return tokenRow;
   },
-  spawnGitClone: (cloneUrl: string, clonePath: string): GitCloneProcess =>
-    spawn('git', ['clone', '--progress', '--', cloneUrl, clonePath], {
+  spawnGitClone: async (cloneUrl: string, clonePath: string, username: string): Promise<GitCloneProcess> => {
+    const userEnv = await buildUserProcessEnv(username);
+    return spawn('git', ['clone', '--progress', '--', cloneUrl, clonePath], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
-        ...process.env,
+        ...userEnv,
         GIT_TERMINAL_PROMPT: '0',
       },
-    }) as unknown as GitCloneProcess,
+    }) as unknown as GitCloneProcess;
+  },
   registerProject: async (
     userId: number,
     username: string,
@@ -256,7 +258,7 @@ export async function startCloneProject(
   }
 
   handlers.onProgress(`Cloning into '${repoName}'...`);
-  const gitProcess = dependencies.spawnGitClone(cloneUrl, clonePath);
+  const gitProcess = await dependencies.spawnGitClone(cloneUrl, clonePath, input.username);
   let lastError = '';
 
   gitProcess.stdout?.on('data', (data: Buffer | string) => {

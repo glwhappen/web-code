@@ -93,6 +93,13 @@ function readRequestUserId(
   return null;
 }
 
+function readRequestUsername(
+  request: AuthenticatedWebSocketRequest | undefined
+): string | null {
+  const username = request?.user?.username;
+  return typeof username === 'string' && username.trim() ? username : null;
+}
+
 /**
  * Pulls `cwd` out of the websocket message options and confirms the caller
  * owns it. Returning the normalized path lets the downstream spawn use the
@@ -136,6 +143,7 @@ export function handleChatConnection(
   connectedClients.add(clientConnection);
 
   const writer = new WebSocketWriter(ws, clientConnection.userId ?? null);
+  const username = readRequestUsername(request);
 
   const sendAuthorizationError = (error: AppError, provider: LLMProvider): void => {
     writer.send({
@@ -165,7 +173,7 @@ export function handleChatConnection(
           sendAuthorizationError(authorization.error, 'claude');
           return;
         }
-        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd, username };
         await dependencies.queryClaudeSDK(data.command ?? '', sanitizedOptions, writer);
         return;
       }
@@ -176,7 +184,7 @@ export function handleChatConnection(
           sendAuthorizationError(authorization.error, 'cursor');
           return;
         }
-        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd, username };
         await dependencies.spawnCursor(data.command ?? '', sanitizedOptions, writer);
         return;
       }
@@ -187,7 +195,7 @@ export function handleChatConnection(
           sendAuthorizationError(authorization.error, 'codex');
           return;
         }
-        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd, username };
         await dependencies.queryCodex(data.command ?? '', sanitizedOptions, writer);
         return;
       }
@@ -198,7 +206,7 @@ export function handleChatConnection(
           sendAuthorizationError(authorization.error, 'gemini');
           return;
         }
-        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd, username };
         await dependencies.spawnGemini(data.command ?? '', sanitizedOptions, writer);
         return;
       }
@@ -209,7 +217,7 @@ export function handleChatConnection(
           sendAuthorizationError(authorization.error, 'opencode');
           return;
         }
-        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd, username };
         await dependencies.spawnOpenCode(data.command ?? '', sanitizedOptions, writer);
         return;
       }
@@ -226,6 +234,7 @@ export function handleChatConnection(
             sessionId: data.sessionId,
             resume: true,
             cwd: authorization.cwd,
+            username,
           },
           writer
         );
