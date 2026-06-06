@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 
+import { assertUserOwnsProjectPath } from '@/modules/projects/services/project-authorization.service.js';
 import { connectedClients } from '@/modules/websocket/services/websocket-state.service.js';
 import { WebSocketWriter } from '@/modules/websocket/services/websocket-writer.service.js';
 import type {
@@ -7,7 +8,7 @@ import type {
   AuthenticatedWebSocketRequest,
   LLMProvider,
 } from '@/shared/types.js';
-import { createNormalizedMessage, parseIncomingJsonObject } from '@/shared/utils.js';
+import { AppError, createNormalizedMessage, parseIncomingJsonObject } from '@/shared/utils.js';
 
 type ChatIncomingMessage = AnyRecord & {
   type?: string;
@@ -91,6 +92,35 @@ function readRequestUserId(
 }
 
 /**
+ * Pulls `cwd` out of the websocket message options and confirms the caller
+ * owns it. Returning the normalized path lets the downstream spawn use the
+ * canonical form instead of whatever the client happened to send.
+ *
+ * Without this gate, any authenticated user could spawn a CLI in another
+ * user's project (or any path on disk) by setting `options.cwd` directly.
+ */
+function authorizeOptionsCwd(
+  userId: string | number | null,
+  options: AnyRecord | undefined,
+): { authorized: true; cwd: string } | { authorized: false; error: AppError } {
+  try {
+    const cwd = assertUserOwnsProjectPath(userId, options?.cwd);
+    return { authorized: true, cwd };
+  } catch (error) {
+    if (error instanceof AppError) {
+      return { authorized: false, error };
+    }
+    return {
+      authorized: false,
+      error: new AppError('Failed to authorize working directory', {
+        code: 'PROJECT_AUTHORIZATION_FAILED',
+        statusCode: 500,
+      }),
+    };
+  }
+}
+
+/**
  * Handles authenticated chat websocket messages used by the main chat panel.
  */
 export function handleChatConnection(
@@ -102,6 +132,15 @@ export function handleChatConnection(
   connectedClients.add(ws);
 
   const writer = new WebSocketWriter(ws, readRequestUserId(request));
+
+  const sendAuthorizationError = (error: AppError, provider: LLMProvider): void => {
+    writer.send({
+      type: 'error',
+      error: error.message,
+      code: error.code,
+      provider,
+    });
+  };
 
   ws.on('message', async (rawMessage) => {
     try {
@@ -117,22 +156,46 @@ export function handleChatConnection(
       }
 
       if (messageType === 'claude-command') {
-        await dependencies.queryClaudeSDK(data.command ?? '', data.options, writer);
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'claude');
+          return;
+        }
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        await dependencies.queryClaudeSDK(data.command ?? '', sanitizedOptions, writer);
         return;
       }
 
       if (messageType === 'cursor-command') {
-        await dependencies.spawnCursor(data.command ?? '', data.options, writer);
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'cursor');
+          return;
+        }
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        await dependencies.spawnCursor(data.command ?? '', sanitizedOptions, writer);
         return;
       }
 
       if (messageType === 'codex-command') {
-        await dependencies.queryCodex(data.command ?? '', data.options, writer);
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'codex');
+          return;
+        }
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        await dependencies.queryCodex(data.command ?? '', sanitizedOptions, writer);
         return;
       }
 
       if (messageType === 'gemini-command') {
-        await dependencies.spawnGemini(data.command ?? '', data.options, writer);
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'gemini');
+          return;
+        }
+        const sanitizedOptions = { ...(data.options ?? {}), cwd: authorization.cwd };
+        await dependencies.spawnGemini(data.command ?? '', sanitizedOptions, writer);
         return;
       }
 
@@ -142,12 +205,17 @@ export function handleChatConnection(
       }
 
       if (messageType === 'cursor-resume') {
+        const authorization = authorizeOptionsCwd(writer.userId, data.options);
+        if (!authorization.authorized) {
+          sendAuthorizationError(authorization.error, 'cursor');
+          return;
+        }
         await dependencies.spawnCursor(
           '',
           {
             sessionId: data.sessionId,
             resume: true,
-            cwd: data.options?.cwd,
+            cwd: authorization.cwd,
           },
           writer
         );
