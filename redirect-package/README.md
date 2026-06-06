@@ -1,13 +1,13 @@
 <div align="center">
 
-> ## This package has moved to [`@cloudcli-ai/cloudcli`](https://www.npmjs.com/package/@cloudcli-ai/cloudcli)
+> ## This package has moved to [`@glwhappen/web-code`](https://www.npmjs.com/package/@glwhappen/web-code)
 >
 > ```bash
-> npm install -g @cloudcli-ai/cloudcli
+> npm install -g @glwhappen/web-code
 > ```
 >
 > This package (`@siteboon/claude-code-ui`) is now a thin wrapper that installs the new package automatically.
-> For new installations, use `@cloudcli-ai/cloudcli` directly.
+> For new installations, use `@glwhappen/web-code` directly.
 
 </div>
 
@@ -92,14 +92,14 @@ The fastest way to get started — no local setup required. Get a fully managed,
 Try CloudCLI UI instantly with **npx** (requires **Node.js** v22+):
 
 ```
-npx @cloudcli-ai/cloudcli
+npx @glwhappen/web-code
 ```
 
 Or install **globally** for regular use:
 
 ```
-npm install -g @cloudcli-ai/cloudcli
-cloudcli
+npm install -g @glwhappen/web-code
+web-code
 ```
 
 Open `http://localhost:3001` — all your existing sessions are discovered automatically.
@@ -117,7 +117,7 @@ CloudCLI UI is the open source UI layer that powers CloudCLI Cloud. You can self
 |---|---|---|
 | **Best for** | Developers who want a full UI for local agent sessions on their own machine | Teams and developers who want agents running in the cloud, accessible from anywhere |
 | **How you access it** | Browser via `[yourip]:port` | Browser, any IDE, REST API, n8n |
-| **Setup** | `npx @cloudcli-ai/cloudcli` | No setup required |
+| **Setup** | `npx @glwhappen/web-code` | No setup required |
 | **Machine needs to stay on** | Yes | No |
 | **Mobile access** | Any browser on your network | Any device, native app coming |
 | **Sessions available** | All sessions auto-discovered from `~/.claude` | All sessions within your cloud environment |

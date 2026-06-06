@@ -29,7 +29,7 @@ sbx secret set -g anthropic
 ### 3. Launch Claude Code
 
 ```bash
-npx @cloudcli-ai/cloudcli@latest sandbox ~/my-project
+npx @glwhappen/web-code@latest sandbox ~/my-project
 ```
 
 Open **http://localhost:3001**. Set a password on first visit. Start building.
@@ -41,11 +41,11 @@ Store the matching API key and pass `--agent`:
 ```bash
 # OpenAI Codex
 sbx secret set -g openai
-npx @cloudcli-ai/cloudcli@latest sandbox ~/my-project --agent codex
+npx @glwhappen/web-code@latest sandbox ~/my-project --agent codex
 
 # Gemini CLI
 sbx secret set -g google
-npx @cloudcli-ai/cloudcli@latest sandbox ~/my-project --agent gemini
+npx @glwhappen/web-code@latest sandbox ~/my-project --agent gemini
 ```
 
 ### Available templates
@@ -68,12 +68,12 @@ sbx rm my-project                    # Remove everything
 sbx exec my-project bash             # Open a shell inside the sandbox
 ```
 
-If you install CloudCLI globally (`npm install -g @cloudcli-ai/cloudcli`), you can also use:
+If you install CloudCLI globally (`npm install -g @glwhappen/web-code`), you can also use:
 
 ```bash
-cloudcli sandbox ls
-cloudcli sandbox start my-project    # Restart and re-launch web UI
-cloudcli sandbox logs my-project     # View server logs
+web-code sandbox ls
+web-code sandbox start my-project    # Restart and re-launch web UI
+web-code sandbox logs my-project     # View server logs
 ```
 
 ## What you get
@@ -92,7 +92,7 @@ Your project directory is mounted bidirectionally — edits propagate in real ti
 Set variables at creation time with `--env`:
 
 ```bash
-npx @cloudcli-ai/cloudcli@latest sandbox ~/my-project --env SERVER_PORT=8080
+npx @glwhappen/web-code@latest sandbox ~/my-project --env SERVER_PORT=8080
 ```
 
 Or inside a running sandbox:
@@ -105,7 +105,7 @@ Restart CloudCLI for changes to take effect:
 
 ```bash
 sbx exec my-project bash -c 'pkill -f "server/index.js"'
-sbx exec -d my-project cloudcli start --port 3001
+sbx exec -d my-project web-code start --port 3001
 ```
 
 | Variable | Default | Description |
