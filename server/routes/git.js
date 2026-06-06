@@ -5,6 +5,7 @@ import { promises as fs } from 'fs';
 import { projectsDb } from '../modules/database/index.js';
 import { queryClaudeSDK } from '../claude-sdk.js';
 import { spawnCursor } from '../cursor-cli.js';
+import { buildUserProcessEnv } from '@/shared/utils.js';
 
 const router = express.Router();
 const COMMIT_DIFF_CHARACTER_LIMIT = 500_000;
@@ -302,6 +303,7 @@ router.get('/status', async (req, res) => {
 
   try {
     const projectPath = await getActualProjectPath(req.user.id, project);
+    const gitEnv = await buildUserProcessEnv(req.user?.username);
 
     // Validate git repository
     await validateGitRepository(projectPath);
@@ -534,17 +536,17 @@ router.post('/initial-commit', async (req, res) => {
 
     // Check if there are already commits
     try {
-      await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: projectPath });
+      await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: projectPath, env: gitEnv });
       return res.status(400).json({ error: 'Repository already has commits. Use regular commit instead.' });
     } catch (error) {
       // No HEAD - this is good, we can create initial commit
     }
 
     // Add all files
-    await spawnAsync('git', ['add', '.'], { cwd: projectPath });
+    await spawnAsync('git', ['add', '.'], { cwd: projectPath, env: gitEnv });
 
     // Create initial commit
-    const { stdout } = await spawnAsync('git', ['commit', '-m', 'Initial commit'], { cwd: projectPath });
+    const { stdout } = await spawnAsync('git', ['commit', '-m', 'Initial commit'], { cwd: projectPath, env: gitEnv });
 
     res.json({ success: true, output: stdout, message: 'Initial commit created successfully' });
   } catch (error) {
@@ -572,6 +574,7 @@ router.post('/commit', async (req, res) => {
 
   try {
     const projectPath = await getActualProjectPath(req.user.id, project);
+    const gitEnv = await buildUserProcessEnv(req.user?.username);
     
     // Validate git repository
     await validateGitRepository(projectPath);
@@ -580,11 +583,11 @@ router.post('/commit', async (req, res) => {
     // Stage selected files
     for (const file of files) {
       const { repositoryRelativeFilePath } = await resolveRepositoryFilePath(projectPath, file);
-      await spawnAsync('git', ['add', '--', repositoryRelativeFilePath], { cwd: repositoryRootPath });
+      await spawnAsync('git', ['add', '--', repositoryRelativeFilePath], { cwd: repositoryRootPath, env: gitEnv });
     }
 
     // Commit with message
-    const { stdout } = await spawnAsync('git', ['commit', '-m', message], { cwd: repositoryRootPath });
+    const { stdout } = await spawnAsync('git', ['commit', '-m', message], { cwd: repositoryRootPath, env: gitEnv });
     
     res.json({ success: true, output: stdout });
   } catch (error) {
@@ -900,7 +903,7 @@ router.post('/generate-commit-message', async (req, res) => {
     }
 
     // Generate commit message using AI
-    const message = await generateCommitMessageWithAI(files, diffContext, provider, projectPath);
+    const message = await generateCommitMessageWithAI(files, diffContext, provider, projectPath, req.user?.username || null);
 
     res.json({ message });
   } catch (error) {
@@ -915,9 +918,10 @@ router.post('/generate-commit-message', async (req, res) => {
  * @param {string} diffContext - Git diff content
  * @param {string} provider - 'claude' or 'cursor'
  * @param {string} projectPath - Project directory path
+ * @param {string|null} username - Authenticated username for per-user CLI state
  * @returns {Promise<string>} Generated commit message
  */
-async function generateCommitMessageWithAI(files, diffContext, provider, projectPath) {
+async function generateCommitMessageWithAI(files, diffContext, provider, projectPath, username) {
   // Create the prompt
   const prompt = `Generate a conventional commit message for these changes.
 
@@ -988,11 +992,13 @@ Generate the commit message:`;
       await queryClaudeSDK(prompt, {
         cwd: projectPath,
         permissionMode: 'bypassPermissions',
+        username,
         model: 'sonnet'
       }, writer);
     } else if (provider === 'cursor') {
       await spawnCursor(prompt, {
         cwd: projectPath,
+        username,
         skipPermissions: true
       }, writer);
     }

@@ -1,8 +1,8 @@
 import { spawn } from 'child_process';
 
-function spawnAsync(command, args) {
+function spawnAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { shell: false });
+    const child = spawn(command, args, { ...options, shell: false });
     let stdout = '';
     child.stdout.on('data', (data) => { stdout += data.toString(); });
     child.on('error', (error) => { reject(error); });
@@ -17,11 +17,11 @@ function spawnAsync(command, args) {
  * Read git configuration from system's global git config
  * @returns {Promise<{git_name: string|null, git_email: string|null}>}
  */
-export async function getSystemGitConfig() {
+export async function getSystemGitConfig(options = {}) {
   try {
     const [nameResult, emailResult] = await Promise.all([
-      spawnAsync('git', ['config', '--global', 'user.name']).catch(() => ({ stdout: '' })),
-      spawnAsync('git', ['config', '--global', 'user.email']).catch(() => ({ stdout: '' }))
+      spawnAsync('git', ['config', '--global', 'user.name'], options).catch(() => ({ stdout: '' })),
+      spawnAsync('git', ['config', '--global', 'user.email'], options).catch(() => ({ stdout: '' }))
     ]);
 
     return {

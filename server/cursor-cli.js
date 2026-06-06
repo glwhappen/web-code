@@ -4,7 +4,7 @@ import { notifyRunFailed, notifyRunStopped } from './services/notification-orche
 import { sessionsService } from './modules/providers/services/sessions.service.js';
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
 import { providerModelsService } from './modules/providers/services/provider-models.service.js';
-import { createNormalizedMessage } from './shared/utils.js';
+import { buildUserProcessEnv, createNormalizedMessage } from './shared/utils.js';
 
 // Use cross-spawn on Windows for better command execution
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
@@ -42,6 +42,9 @@ async function spawnCursor(command, options = {}, ws) {
   return new Promise(async (resolve, reject) => {
     const { sessionId, projectPath, cwd, resume, toolsSettings, skipPermissions, model, sessionSummary } = options;
     const resolvedModel = await providerModelsService.resolveResumeModel('cursor', sessionId, model);
+    const userEnv = options.username
+      ? await buildUserProcessEnv(options.username)
+      : { ...process.env };
     let capturedSessionId = sessionId; // Track session ID throughout the process
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let hasRetriedWithTrust = false;
@@ -141,7 +144,7 @@ async function spawnCursor(command, options = {}, ws) {
       const cursorProcess = spawnFunction('cursor-agent', args, {
         cwd: workingDir,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env } // Inherit all environment variables
+        env: userEnv
       });
 
       activeCursorProcesses.set(processKey, { process: cursorProcess, userId: ws?.userId ?? null });

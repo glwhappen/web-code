@@ -167,6 +167,52 @@ export async function ensureUserWorkspaceRoot(username: unknown): Promise<string
 }
 
 /**
+ * Returns the runtime HOME directory reserved for one authenticated website
+ * user. Child processes spawned on that user's behalf should receive this path
+ * as `HOME` so global CLI state (`.gitconfig`, `.codex`, `.claude`, etc.)
+ * stays isolated from both the host account and sibling website users.
+ */
+export function getUserHomeDirectory(username: unknown): string {
+  return path.join(getUserWorkspaceRoot(username), 'home');
+}
+
+/**
+ * Ensures the per-user runtime HOME exists together with a few common XDG
+ * directories used by provider CLIs.
+ */
+export async function ensureUserHomeDirectory(username: unknown): Promise<string> {
+  const userHome = getUserHomeDirectory(username);
+  await mkdir(userHome, { recursive: true });
+  await Promise.all([
+    mkdir(path.join(userHome, '.config'), { recursive: true }),
+    mkdir(path.join(userHome, '.local', 'share'), { recursive: true }),
+    mkdir(path.join(userHome, '.local', 'state'), { recursive: true }),
+  ]);
+  return userHome;
+}
+
+/**
+ * Builds a child-process environment rooted in the authenticated user's
+ * dedicated runtime HOME.
+ */
+export async function buildUserProcessEnv(
+  username: unknown,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): Promise<NodeJS.ProcessEnv> {
+  const userHome = await ensureUserHomeDirectory(username);
+
+  return {
+    ...baseEnv,
+    HOME: userHome,
+    USERPROFILE: userHome,
+    XDG_CONFIG_HOME: path.join(userHome, '.config'),
+    XDG_DATA_HOME: path.join(userHome, '.local', 'share'),
+    XDG_STATE_HOME: path.join(userHome, '.local', 'state'),
+    GIT_CONFIG_GLOBAL: path.join(userHome, '.gitconfig'),
+  };
+}
+
+/**
  * System-critical paths that must never be used as workspace roots.
  *
  * The validation helper blocks these values directly and also blocks paths
@@ -1205,4 +1251,3 @@ export async function extractFirstValidJsonlData<T>(
 
   return null;
 }
-

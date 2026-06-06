@@ -10,7 +10,7 @@ import GeminiResponseHandler from './gemini-response-handler.js';
 import { notifyRunFailed, notifyRunStopped } from './services/notification-orchestrator.js';
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
 import { providerModelsService } from './modules/providers/services/provider-models.service.js';
-import { createNormalizedMessage } from './shared/utils.js';
+import { buildUserProcessEnv, createNormalizedMessage, getUserHomeDirectory } from './shared/utils.js';
 
 // Use cross-spawn on Windows for correct .cmd resolution (same pattern as cursor-cli.js)
 const spawnFunction = process.platform === 'win32' ? crossSpawn : spawn;
@@ -92,8 +92,8 @@ function parseEnvFileContent(content) {
     return parsed;
 }
 
-async function loadGeminiUserLevelEnv() {
-    const geminiCliHome = (process.env.GEMINI_CLI_HOME || '').trim() || os.homedir();
+async function loadGeminiUserLevelEnv(userHome = null) {
+    const geminiCliHome = (process.env.GEMINI_CLI_HOME || '').trim() || userHome || os.homedir();
     const envCandidates = [
         path.join(geminiCliHome, '.gemini', '.env'),
         path.join(geminiCliHome, '.env')
@@ -112,8 +112,8 @@ async function loadGeminiUserLevelEnv() {
     return {};
 }
 
-async function buildGeminiProcessEnv() {
-    const processEnv = { ...process.env };
+async function buildGeminiProcessEnv(options = {}) {
+    const processEnv = { ...(options.baseEnv || process.env) };
     if (processEnv.GEMINI_API_KEY || processEnv.GOOGLE_API_KEY || processEnv.GOOGLE_APPLICATION_CREDENTIALS) {
         return processEnv;
     }
@@ -121,7 +121,7 @@ async function buildGeminiProcessEnv() {
     // Gemini CLI docs recommend ~/.gemini/.env for persistent headless auth settings.
     // When the server process was launched without shell profile variables, we still
     // want the spawned CLI process to inherit those user-level credentials.
-    const userEnv = await loadGeminiUserLevelEnv();
+    const userEnv = await loadGeminiUserLevelEnv(options.userHome || null);
     for (const key of GEMINI_AUTH_ENV_KEYS) {
         if (!processEnv[key] && userEnv[key]) {
             processEnv[key] = userEnv[key];
@@ -134,6 +134,10 @@ async function buildGeminiProcessEnv() {
 async function spawnGemini(command, options = {}, ws) {
     const { sessionId, projectPath, cwd, toolsSettings, permissionMode, images, sessionSummary } = options;
     const userId = ws?.userId ?? null;
+    const userEnv = options.username
+        ? await buildUserProcessEnv(options.username)
+        : { ...process.env };
+    const userHome = options.username ? getUserHomeDirectory(options.username) : null;
     const resolvedModel = await providerModelsService.resolveResumeModel(
         'gemini',
         sessionId,
@@ -230,7 +234,7 @@ async function spawnGemini(command, options = {}, ws) {
 
     // Add MCP config flag only if MCP servers are configured
     try {
-        const geminiConfigPath = path.join(os.homedir(), '.gemini.json');
+        const geminiConfigPath = path.join(userHome || os.homedir(), '.gemini.json');
         let hasMcpServers = false;
 
         try {
@@ -293,7 +297,7 @@ async function spawnGemini(command, options = {}, ws) {
         spawnArgs = ['-c', 'exec "$0" "$@"', geminiPath, ...args];
     }
 
-    const spawnEnv = await buildGeminiProcessEnv();
+    const spawnEnv = await buildGeminiProcessEnv({ baseEnv: userEnv, userHome });
 
     return new Promise((resolve, reject) => {
         const geminiProcess = spawnFunction(spawnCmd, spawnArgs, {

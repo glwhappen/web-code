@@ -17,7 +17,7 @@ function buildDependencies(overrides: Partial<NonNullable<TestDependencies>> = {
     pathExists: async () => false,
     removePath: async () => undefined,
     getGithubTokenById: async () => ({ github_token: 'token-value' }),
-    spawnGitClone: () => {
+    spawnGitClone: async () => {
       throw new Error('spawnGitClone should be overridden in this test');
     },
     registerProject: async () => ({ project: { projectId: 'project-1' } }),
@@ -167,7 +167,7 @@ test('startCloneProject completes and emits complete payload when git exits succ
       },
     },
     buildDependencies({
-      spawnGitClone: () => gitProcess as any,
+      spawnGitClone: async () => gitProcess as any,
       registerProject: async (userId, username, projectPath, customName) => {
         capturedUserId = userId;
         capturedUsername = username;
