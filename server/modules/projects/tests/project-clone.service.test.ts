@@ -17,7 +17,7 @@ function buildDependencies(overrides: Partial<NonNullable<TestDependencies>> = {
     pathExists: async () => false,
     removePath: async () => undefined,
     getGithubTokenById: async () => ({ github_token: 'token-value' }),
-    spawnGitClone: () => {
+    spawnGitClone: async () => {
       throw new Error('spawnGitClone should be overridden in this test');
     },
     registerProject: async () => ({ project: { projectId: 'project-1' } }),
@@ -167,7 +167,7 @@ test('startCloneProject completes and emits complete payload when git exits succ
       },
     },
     buildDependencies({
-      spawnGitClone: () => gitProcess as any,
+      spawnGitClone: async () => gitProcess as any,
       registerProject: async (userId, username, projectPath, customName) => {
         capturedUserId = userId;
         capturedUsername = username;
@@ -193,4 +193,34 @@ test('startCloneProject completes and emits complete payload when git exits succ
   };
   assert.equal(resolvedCompletePayload.message, 'Repository cloned successfully');
   assert.equal((resolvedCompletePayload.project.projectId as string) || '', 'project-1');
+});
+
+test('startCloneProject expands tilde workspace paths before validation', async () => {
+  let capturedWorkspacePath = '';
+  const gitProcess = createMockGitProcess();
+
+  const operation = await startCloneProject(
+    {
+      workspacePath: '~/workspace-root',
+      githubUrl: 'https://github.com/example/repo.git',
+      userId: 1,
+      username: 'tester',
+    },
+    {
+      onProgress: () => undefined,
+      onComplete: () => undefined,
+    },
+    buildDependencies({
+      validatePath: async (workspacePath) => {
+        capturedWorkspacePath = workspacePath;
+        return { valid: true, resolvedPath: '/workspace/root/workspace-root' };
+      },
+      spawnGitClone: async () => gitProcess as any,
+    }),
+  );
+
+  gitProcess.emit('close', 0);
+  await operation.waitForCompletion;
+
+  assert.equal(capturedWorkspacePath, '/workspace/root/workspace-root');
 });

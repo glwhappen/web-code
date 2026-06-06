@@ -3,6 +3,7 @@ import { userDb } from '../modules/database/index.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getSystemGitConfig } from '../utils/gitConfig.js';
 import { spawn } from 'child_process';
+import { buildUserProcessEnv } from '@/shared/utils.js';
 
 const router = express.Router();
 
@@ -28,11 +29,12 @@ function spawnAsync(command, args, options = {}) {
 router.get('/git-config', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const userEnv = await buildUserProcessEnv(req.user.username);
     let gitConfig = userDb.getGitConfig(userId);
 
     // If database is empty, try to get from system git config
     if (!gitConfig || (!gitConfig.git_name && !gitConfig.git_email)) {
-      const systemConfig = await getSystemGitConfig();
+      const systemConfig = await getSystemGitConfig({ env: userEnv });
 
       // If system has values, save them to database for this user
       if (systemConfig.git_name || systemConfig.git_email) {
@@ -58,6 +60,7 @@ router.post('/git-config', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const { gitName, gitEmail } = req.body;
+    const userEnv = await buildUserProcessEnv(req.user.username);
 
     if (!gitName || !gitEmail) {
       return res.status(400).json({ error: 'Git name and email are required' });
@@ -72,9 +75,9 @@ router.post('/git-config', authenticateToken, async (req, res) => {
     userDb.updateGitConfig(userId, gitName, gitEmail);
 
     try {
-      await spawnAsync('git', ['config', '--global', 'user.name', gitName]);
-      await spawnAsync('git', ['config', '--global', 'user.email', gitEmail]);
-      console.log(`Applied git config globally: ${gitName} <${gitEmail}>`);
+      await spawnAsync('git', ['config', '--global', 'user.name', gitName], { env: userEnv });
+      await spawnAsync('git', ['config', '--global', 'user.email', gitEmail], { env: userEnv });
+      console.log(`Applied git config in user home for ${req.user.username}: ${gitName} <${gitEmail}>`);
     } catch (gitError) {
       console.error('Error applying git config:', gitError);
     }

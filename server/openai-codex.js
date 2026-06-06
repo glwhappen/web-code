@@ -18,7 +18,7 @@ import { notifyRunFailed, notifyRunStopped } from './services/notification-orche
 import { sessionsService } from './modules/providers/services/sessions.service.js';
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
 import { providerModelsService } from './modules/providers/services/provider-models.service.js';
-import { createNormalizedMessage } from './shared/utils.js';
+import { buildUserProcessEnv, createNormalizedMessage } from './shared/utils.js';
 
 // Track active sessions – keys are namespaced as `${userId}:${sessionId}`
 const activeCodexSessions = new Map();
@@ -221,7 +221,10 @@ export async function queryCodex(command, options = {}, ws) {
 
   try {
     // Initialize Codex SDK
-    codex = new Codex();
+    const userEnv = options.username
+      ? await buildUserProcessEnv(options.username)
+      : { ...process.env };
+    codex = new Codex({ env: userEnv });
 
     // Thread options with sandbox and approval settings
     const threadOptions = {

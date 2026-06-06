@@ -5,7 +5,7 @@ import path from 'node:path';
 import pty, { type IPty } from 'node-pty';
 import { WebSocket, type RawData } from 'ws';
 
-import { parseIncomingJsonObject } from '@/shared/utils.js';
+import { buildUserProcessEnv, parseIncomingJsonObject } from '@/shared/utils.js';
 import type { AuthenticatedWebSocketRequest } from '@/shared/types.js';
 
 type ShellIncomingMessage = {
@@ -187,6 +187,14 @@ function readRequestUserId(
   return undefined;
 }
 
+function readRequestUsername(
+  request: AuthenticatedWebSocketRequest | undefined
+): string | null {
+  return typeof request?.user?.username === 'string' && request.user.username.trim()
+    ? request.user.username
+    : null;
+}
+
 /**
  * Handles websocket connections used by the standalone shell terminal UI.
  */
@@ -198,6 +206,7 @@ export function handleShellConnection(
   console.log('[INFO] Shell websocket connected');
 
   const userId = readRequestUserId(request);
+  const username = readRequestUsername(request);
 
   let shellProcess: IPty | null = null;
   let ptySessionKey: string | null = null;
@@ -303,13 +312,15 @@ export function handleShellConnection(
         const termCols = readNumber(data.cols, 80);
         const termRows = readNumber(data.rows, 24);
 
+        const userEnv = username ? await buildUserProcessEnv(username) : process.env;
+
         shellProcess = pty.spawn(shell, shellArgs, {
           name: 'xterm-256color',
           cols: termCols,
           rows: termRows,
           cwd: resolvedProjectPath,
           env: {
-            ...process.env,
+            ...userEnv,
             TERM: 'xterm-256color',
             COLORTERM: 'truecolor',
             FORCE_COLOR: '3',

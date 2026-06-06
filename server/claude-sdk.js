@@ -28,7 +28,7 @@ import {
 } from './services/notification-orchestrator.js';
 import { sessionsService } from './modules/providers/services/sessions.service.js';
 import { providerAuthService } from './modules/providers/services/provider-auth.service.js';
-import { createNormalizedMessage } from './shared/utils.js';
+import { buildUserProcessEnv, createNormalizedMessage, getUserHomeDirectory } from './shared/utils.js';
 
 // Keys are namespaced as `${userId}:${sessionId}` to prevent cross-user session access.
 const activeSessions = new Map();
@@ -153,13 +153,13 @@ function matchesToolPermission(entry, toolName, input) {
  * @returns {Object} SDK-compatible options
  */
 function mapCliOptionsToSDK(options = {}) {
-  const { sessionId, cwd, toolsSettings, permissionMode } = options;
+  const { sessionId, cwd, toolsSettings, permissionMode, env } = options;
 
   const sdkOptions = {};
 
   // Forward all host env vars (e.g. ANTHROPIC_BASE_URL) to the subprocess.
   // Since SDK 0.2.113, options.env replaces process.env instead of overlaying it.
-  sdkOptions.env = { ...process.env };
+  sdkOptions.env = { ...process.env, ...(env || {}) };
 
   // Resolve the executable eagerly on Windows because the SDK uses raw child_process.spawn,
   // which does not reliably follow npm's shell wrappers like cross-spawn does.
@@ -471,9 +471,9 @@ async function cleanupTempFiles(tempImagePaths, tempDir) {
  * @param {string} cwd - Current working directory for project-specific configs
  * @returns {Object|null} MCP servers object or null if none found
  */
-async function loadMcpConfig(cwd) {
+async function loadMcpConfig(cwd, userHome = null) {
   try {
-    const claudeConfigPath = path.join(os.homedir(), '.claude.json');
+    const claudeConfigPath = path.join(userHome || os.homedir(), '.claude.json');
 
     // Check if config file exists
     try {
@@ -552,15 +552,20 @@ async function queryClaudeSDK(command, options = {}, ws) {
       sessionId,
       options.model,
     );
+    const userEnv = options.username
+      ? await buildUserProcessEnv(options.username)
+      : { ...process.env };
+    const userHome = options.username ? getUserHomeDirectory(options.username) : null;
 
     // Map CLI options to SDK format
     const sdkOptions = mapCliOptionsToSDK({
       ...options,
+      env: userEnv,
       model: resolvedModel || options.model,
     });
 
     // Load MCP configuration
-    const mcpServers = await loadMcpConfig(options.cwd);
+    const mcpServers = await loadMcpConfig(options.cwd, userHome);
     if (mcpServers) {
       sdkOptions.mcpServers = mcpServers;
     }

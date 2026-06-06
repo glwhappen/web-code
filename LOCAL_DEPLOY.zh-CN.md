@@ -52,6 +52,30 @@ npm ls -g @glwhappen/web-code --depth=0
 
 注意：如果当前页面仍由旧进程提供服务，设置页可能已经显示新版号，但 Node 服务进程未必已经重启。要完整切到新版，需要让旧进程退出一次。
 
+## 打包后 `web-code` 没有执行权限
+
+如果运行 `web-code` 或 `web-code --help` 时出现类似下面的错误：
+
+```text
+/home/happen/.nvm/versions/node/v24.15.0/bin/web-code: Permission denied
+```
+
+先检查全局命令实际指向的文件：
+
+```bash
+readlink -f "$(command -v web-code)"
+ls -l "$(readlink -f "$(command -v web-code)")"
+```
+
+正常情况下，目标文件应当包含执行权限，例如 `-rwxrwxr-x`。如果看到的是 `-rw-rw-r--`，说明 bin 入口文件缺少 executable bit，需要补上：
+
+```bash
+chmod +x "$(readlink -f "$(command -v web-code)")"
+web-code --help
+```
+
+原因：`web-code` 这个全局命令是 npm 创建的符号链接，最终指向包内的 `dist-server/server/cli.js`。这个文件虽然有 `#!/usr/bin/env node` shebang，但 shebang 只告诉系统用哪个解释器运行文件，不会自动赋予执行权限。`npm run build` 会删除并重新生成 `dist-server`，TypeScript 编译产物通常会按当前 `umask` 写成普通文件权限，例如 `0644`；如果发布或本地链接时没有再把 `dist-server/server/cli.js` 设为可执行，安装后的 `web-code` 命令就会因为目标文件不可执行而失败。
+
 ## 切换到新版进程
 
 如果旧版是通过 `screen -S web-code` 启动的，退出旧进程：

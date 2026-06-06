@@ -986,6 +986,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         projectPath: finalProjectPath,
         cwd: finalProjectPath,
         sessionId: sessionId || null,
+        username: req.user.username,
         model: model,
         permissionMode: 'bypassPermissions' // Bypass all permissions for API calls
       }, writer);
@@ -997,6 +998,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         projectPath: finalProjectPath,
         cwd: finalProjectPath,
         sessionId: sessionId || null,
+        username: req.user.username,
         model: model || undefined,
         skipPermissions: true // Bypass permissions for Cursor
       }, writer);
@@ -1007,6 +1009,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         projectPath: finalProjectPath,
         cwd: finalProjectPath,
         sessionId: sessionId || null,
+        username: req.user.username,
         model: model || codexModels.DEFAULT,
         permissionMode: 'bypassPermissions'
       }, writer);
@@ -1017,6 +1020,7 @@ router.post('/', validateExternalApiKey, async (req, res) => {
         projectPath: finalProjectPath,
         cwd: finalProjectPath,
         sessionId: sessionId || null,
+        username: req.user.username,
         model: model || geminiModels.DEFAULT,
         skipPermissions: true // CLI mode bypasses permissions
       }, writer);
